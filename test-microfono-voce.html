@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test microfono e voce</title>
+<style>
+  body {
+    font-family: -apple-system, Roboto, "Segoe UI", Arial, sans-serif;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 16px 16px 40px;
+    background: #fafafa;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+  h1 { font-size: 1.15rem; margin-bottom: 4px; }
+  p.intro { font-size: 0.9rem; color: #555; margin-top: 0; }
+  .status {
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 14px;
+    border-radius: 8px;
+    background: #e8edff;
+    border: 1px solid #c3cdf5;
+    margin: 12px 0;
+  }
+  .status.err { background: #fde8e8; border-color: #f3b3b3; color: #8a1f1f; }
+  button {
+    font-size: 1rem;
+    padding: 14px 18px;
+    margin: 0 8px 14px 0;
+    border-radius: 8px;
+    border: 1px solid #999;
+    background: #fff;
+    min-width: 120px;
+  }
+  button:active { background: #e0e0e0; }
+  #transcript {
+    min-height: 50px;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-size: 1.05rem;
+  }
+  #log {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.75rem;
+    background: #111;
+    color: #6fdc6f;
+    padding: 10px;
+    border-radius: 8px;
+    height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .label { font-size: 0.85rem; color: #555; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<h1>Test diagnostico: microfono e voce</h1>
+<p class="intro">Questa pagina NON è l'app finale. Serve solo a verificare se, sul tuo telefono, il riconoscimento vocale continuo e la sintesi vocale funzionano bene.</p>
+
+<div class="status" id="status">Pronto. Premi "Avvia test" e concedi il permesso al microfono quando richiesto.</div>
+
+<button id="startBtn">Avvia test</button>
+<button id="stopBtn">Ferma</button>
+<button id="voiceTestBtn">Test solo voce</button>
+
+<div class="label">Cosa ha capito (in inglese):</div>
+<div id="transcript">—</div>
+
+<div class="label">Log tecnico (per la diagnosi):</div>
+<div id="log"></div>
+
+<script>
+const statusEl = document.getElementById('status');
+const transcriptEl = document.getElementById('transcript');
+const logEl = document.getElementById('log');
+
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent += `[${t}] ${msg}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+log('User agent: ' + navigator.userAgent);
+
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let shouldListen = false;
+let isSpeaking = false;
+
+function setStatus(text, isErr) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle('err', !!isErr);
+}
+
+if (!SpeechRecognitionCtor) {
+  setStatus('Riconoscimento vocale NON disponibile in questo browser/app.', true);
+  log('SpeechRecognition non supportata in questo ambiente.');
+} else {
+  recognition = new SpeechRecognitionCtor();
+  recognition.lang = 'en-US';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onstart = () => {
+    log('Riconoscimento avviato.');
+    setStatus('In ascolto... parla in inglese (anche una frase corta)');
+  };
+
+  recognition.onresult = (event) => {
+    let interim = '', final = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const txt = event.results[i][0].transcript;
+      if (event.results[i].isFinal) final += txt;
+      else interim += txt;
+    }
+    transcriptEl.textContent = final || interim || '—';
+    if (final) {
+      log('Risultato FINALE riconosciuto: "' + final.trim() + '"');
+      speakReply(final.trim());
+    }
+  };
+
+  recognition.onerror = (event) => {
+    log('ERRORE riconoscimento: ' + event.error);
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      setStatus('Permesso microfono negato o bloccato.', true);
+      shouldListen = false;
+    }
+  };
+
+  recognition.onend = () => {
+    log('Sessione di riconoscimento terminata.');
+    if (shouldListen && !isSpeaking) {
+      try { recognition.start(); } catch (e) { log('Riavvio automatico fallito: ' + e.message); }
+    }
+  };
+}
+
+document.getElementById('startBtn').onclick = () => {
+  if (!recognition) return;
+  shouldListen = true;
+  // "Sblocca" l'audio su iOS facendo parlare il sintetizzatore una volta dentro al click dell'utente
+  speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+  try { recognition.start(); } catch (e) { log('Errore avvio: ' + e.message); }
+};
+
+document.getElementById('stopBtn').onclick = () => {
+  shouldListen = false;
+  if (recognition) recognition.stop();
+  speechSynthesis.cancel();
+  isSpeaking = false;
+  setStatus('Fermato manualmente.');
+  log('Stop manuale premuto.');
+};
+
+document.getElementById('voiceTestBtn').onclick = () => {
+  speakText('This is a test of the slow voice. Can you understand me clearly?');
+};
+
+let cachedVoices = [];
+function loadVoices() {
+  cachedVoices = speechSynthesis.getVoices();
+  const en = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
+  log('Voci inglesi trovate: ' + en.length + (en.length ? ' -> ' + en.map(v => v.name).join(', ') : ''));
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+
+function pickVoice() {
+  const en = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
+  return en.find(v => /natural|online|neural|google/i.test(v.name)) || en[0] || null;
+}
+
+function speakText(text) {
+  const u = new SpeechSynthesisUtterance(text);
+  const v = pickVoice();
+  if (v) u.voice = v;
+  u.rate = 0.75;
+  u.lang = 'en-US';
+  isSpeaking = true;
+  setStatus('Sto parlando...');
+  log('Inizio sintesi vocale: "' + text + '"' + (v ? ' [voce: ' + v.name + ']' : ' [voce di default]'));
+  u.onend = () => {
+    isSpeaking = false;
+    log('Fine sintesi vocale.');
+    if (shouldListen) {
+      setStatus('In ascolto... parla in inglese');
+      try { recognition.start(); } catch (e) { log('Riavvio dopo voce fallito: ' + e.message); }
+    } else {
+      setStatus('Pronto. Premi "Avvia test".');
+    }
+  };
+  u.onerror = (e) => { log('Errore sintesi vocale: ' + e.error); isSpeaking = false; };
+  speechSynthesis.speak(u);
+}
+
+function speakReply(heard) {
+  if (recognition) recognition.stop();
+  speakText('I heard you say: ' + heard + '. This is a test.');
+}
+</script>
+</body>
+</html>
