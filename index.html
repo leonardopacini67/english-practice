@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>English Practice</title>
+<style>
+  body {
+    font-family: -apple-system, Roboto, "Segoe UI", Arial, sans-serif;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 16px 16px 40px;
+    background: #fafafa;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+  h1 { font-size: 1.15rem; margin-bottom: 4px; }
+  p.intro { font-size: 0.85rem; color: #555; margin-top: 0; }
+  .status {
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 14px;
+    border-radius: 8px;
+    background: #e8edff;
+    border: 1px solid #c3cdf5;
+    margin: 12px 0;
+  }
+  .status.err { background: #fde8e8; border-color: #f3b3b3; color: #8a1f1f; }
+  button {
+    font-size: 1rem;
+    padding: 14px 16px;
+    margin: 0 8px 14px 0;
+    border-radius: 8px;
+    border: 1px solid #999;
+    background: #fff;
+  }
+  button:active { background: #e0e0e0; }
+  #transcript {
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    font-size: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  #transcript .line { margin-bottom: 10px; }
+  #transcript .who { font-weight: 700; }
+  #log {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.72rem;
+    background: #111;
+    color: #6fdc6f;
+    padding: 10px;
+    border-radius: 8px;
+    height: 160px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .label { font-size: 0.85rem; color: #555; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<h1>English Practice</h1>
+<p class="intro">Conversazione in inglese a mani libere. Premi "Avvia conversazione" la prima volta, poi parla normalmente.</p>
+
+<div class="status" id="status">Pronto. Premi "Avvia conversazione".</div>
+
+<button id="startBtn">Avvia conversazione</button>
+<button id="stopBtn">Ferma</button>
+<button id="resetBtn">Reset conversazione</button>
+
+<div class="label">Conversazione:</div>
+<div id="transcript"></div>
+
+<div class="label">Log tecnico:</div>
+<div id="log"></div>
+
+<script>
+/* =========================================================
+   INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
+   (presa da https://aistudio.google.com -> "Get API key")
+   ========================================================= */
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
+const MODEL_ID = "gemini-3.5-flash";
+
+const GREETING = "Hi! I'm Emma, your English conversation partner. What did you do today?";
+
+const SYSTEM_PROMPT = `You are Emma, a friendly and patient English conversation tutor helping an Italian adult learner at B1 (intermediate) level practice spoken English.
+
+Rules you must always follow:
+- Keep every reply short: 1 to 3 sentences maximum. Your reply will be read aloud by a text-to-speech voice, so brevity is essential.
+- Use simple, everyday vocabulary and grammar suitable for B1 level. Avoid idioms, slang, and complex structures.
+- Always keep the conversation going by asking a natural follow-up question about everyday topics (work, hobbies, travel, daily life, opinions).
+- If the learner makes a meaningful grammar or vocabulary mistake, gently correct it: first respond naturally and warmly to what they meant, then add one short line starting with "Tip:" showing the more natural way to say it, followed by a very brief explanation in Italian in parentheses. Skip this for very minor or unclear errors.
+- Never lecture, never give long grammar explanations, never use emojis or markdown formatting since this is spoken aloud.
+- Respond only in plain text, in English (except for the short Italian clarification inside a "Tip:" line, when present).`;
+
+const statusEl = document.getElementById('status');
+const transcriptEl = document.getElementById('transcript');
+const logEl = document.getElementById('log');
+
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent += `[${t}] ${msg}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setStatus(text, isErr) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle('err', !!isErr);
+}
+function appendTranscript(who, text) {
+  const div = document.createElement('div');
+  div.className = 'line';
+  div.innerHTML = '<span class="who">' + who + ':</span> ' + text;
+  transcriptEl.appendChild(div);
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+log('User agent: ' + navigator.userAgent);
+
+let conversationHistory = []; // {role:'user'|'model', parts:[{text}]}
+let shouldListen = false;
+let busy = false;
+
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+
+if (!SpeechRecognitionCtor) {
+  setStatus('Riconoscimento vocale NON disponibile in questo browser.', true);
+  log('SpeechRecognition non supportata.');
+} else {
+  recognition = new SpeechRecognitionCtor();
+  recognition.lang = 'en-US';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onstart = () => { log('In ascolto.'); setStatus('In ascolto... parla in inglese'); };
+
+  recognition.onresult = (event) => {
+    let final = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) final += event.results[i][0].transcript;
+    }
+    if (final.trim()) {
+      handleUserSpeech(final.trim());
+    }
+  };
+
+  recognition.onerror = (event) => {
+    log('ERRORE riconoscimento: ' + event.error);
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      setStatus('Permesso microfono negato o bloccato.', true);
+      shouldListen = false;
+    }
+  };
+
+  recognition.onend = () => {
+    log('Sessione riconoscimento terminata.');
+    if (shouldListen && !busy) {
+      try { recognition.start(); } catch (e) { log('Riavvio fallito: ' + e.message); }
+    }
+  };
+}
+
+function startListening() {
+  if (!recognition) return;
+  try { recognition.start(); } catch (e) { log('Errore avvio ascolto: ' + e.message); }
+}
+
+let cachedVoices = [];
+function loadVoices() {
+  cachedVoices = speechSynthesis.getVoices();
+  const en = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
+  log('Voci inglesi trovate: ' + en.length);
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+
+function pickVoice() {
+  const en = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
+  return en.find(v => /natural|online|neural|google/i.test(v.name)) || en[0] || null;
+}
+
+function speakAndContinue(text) {
+  const u = new SpeechSynthesisUtterance(text);
+  const v = pickVoice();
+  if (v) u.voice = v;
+  u.rate = 0.75;
+  u.lang = 'en-US';
+  busy = true;
+  setStatus('Sto parlando...');
+  u.onend = () => {
+    busy = false;
+    if (shouldListen) { setStatus('In ascolto... parla in inglese'); startListening(); }
+    else { setStatus('Pronto. Premi "Avvia conversazione".'); }
+  };
+  u.onerror = (e) => { log('Errore sintesi: ' + e.error); busy = false; };
+  speechSynthesis.speak(u);
+}
+
+function trimHistory(history) {
+  const maxMessages = 16;
+  return history.length > maxMessages ? history.slice(history.length - maxMessages) : history;
+}
+
+async function getAIReply(history) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL_ID + ':generateContent';
+  const body = {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: history,
+    generationConfig: { temperature: 0.6, maxOutputTokens: 200 }
+  };
+  const t0 = Date.now();
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY },
+    body: JSON.stringify(body)
+  });
+  const elapsed = Date.now() - t0;
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('HTTP ' + res.status + ' (' + elapsed + 'ms): ' + errText.slice(0, 200));
+  }
+  const data = await res.json();
+  log('Risposta AI ricevuta in ' + elapsed + 'ms.');
+  const text = data.candidates && data.candidates[0] && data.candidates[0].content &&
+               data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+               data.candidates[0].content.parts[0].text;
+  if (!text) throw new Error('Risposta inattesa: ' + JSON.stringify(data).slice(0, 200));
+  return text.trim();
+}
+
+async function handleUserSpeech(text) {
+  conversationHistory.push({ role: 'user', parts: [{ text }] });
+  appendTranscript('Tu', text);
+  busy = true;
+  if (recognition) recognition.stop();
+  setStatus('Sto pensando...');
+  log('Invio a Gemini: "' + text + '"');
+  try {
+    const reply = await getAIReply(trimHistory(conversationHistory));
+    conversationHistory.push({ role: 'model', parts: [{ text: reply }] });
+    appendTranscript('Emma', reply);
+    speakAndContinue(reply);
+  } catch (err) {
+    log('Errore AI: ' + err.message);
+    setStatus('Errore con l\'AI, riprovo ad ascoltare...', true);
+    busy = false;
+    if (shouldListen) startListening();
+  }
+}
+
+document.getElementById('startBtn').onclick = () => {
+  if (API_KEY.indexOf('INSERISCI') === 0) {
+    setStatus('Devi prima inserire la tua chiave Gemini nel codice (vedi istruzioni).', true);
+    log('Chiave API non inserita.');
+    return;
+  }
+  shouldListen = true;
+  if (conversationHistory.length === 0) {
+    conversationHistory.push({ role: 'model', parts: [{ text: GREETING }] });
+    appendTranscript('Emma', GREETING);
+    speakAndContinue(GREETING);
+  } else {
+    speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+    startListening();
+  }
+};
+
+document.getElementById('stopBtn').onclick = () => {
+  shouldListen = false;
+  if (recognition) recognition.stop();
+  speechSynthesis.cancel();
+  busy = false;
+  setStatus('Fermato.');
+  log('Stop manuale.');
+};
+
+document.getElementById('resetBtn').onclick = () => {
+  shouldListen = false;
+  busy = false;
+  if (recognition) recognition.stop();
+  speechSynthesis.cancel();
+  conversationHistory = [];
+  transcriptEl.innerHTML = '';
+  setStatus('Conversazione azzerata. Premi "Avvia conversazione" per ricominciare.');
+  log('Reset eseguito.');
+};
+</script>
+</body>
+</html>
