@@ -71,6 +71,11 @@
 <button id="stopBtn">Ferma</button>
 <button id="resetBtn">Reset conversazione</button>
 
+<div class="label" style="margin-top:4px;">Voce di Emma:</div>
+<select id="voiceSelect" style="font-size:0.95rem;padding:8px;border-radius:8px;border:1px solid #999;width:100%;margin-bottom:14px;">
+  <option value="">— In caricamento voci... —</option>
+</select>
+
 <div class="label">Conversazione:</div>
 <div id="transcript"></div>
 
@@ -82,8 +87,9 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (presa da https://aistudio.google.com -> "Get API key")
    ========================================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
-const MODEL_ID = "gemini-3.5-flash";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
+const MODEL_ID = "gemini-2.0-flash";
+const FALLBACK_MODEL_ID = "gemini-1.5-flash";
 
 const GREETING = "Hi! I'm Emma, your English conversation partner. What did you do today?";
 
@@ -170,22 +176,46 @@ function startListening() {
 }
 
 let cachedVoices = [];
+const voiceSelect = document.getElementById('voiceSelect');
+
+const FEMALE_PRIORITIES = ['samantha','karen','moira','tessa','victoria','fiona',
+  'google us english','microsoft zira','microsoft aria','microsoft jenny'];
+
 function loadVoices() {
-  cachedVoices = speechSynthesis.getVoices();
-  const en = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
-  log('Voci inglesi trovate: ' + en.length);
+  const all = speechSynthesis.getVoices();
+  if (!all.length) return;
+  cachedVoices = all;
+  const en = all.filter(v => v.lang.toLowerCase().startsWith('en'));
+  log('Voci inglesi: ' + en.map(v => v.name).join(', '));
+  voiceSelect.innerHTML = '';
+  en.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = v.name + ' (' + v.lang + ')';
+    voiceSelect.appendChild(opt);
+  });
+  const best = pickBestVoice(en);
+  if (best) voiceSelect.value = best.name;
 }
 speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
 
-function pickVoice() {
-  const en = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
-  return en.find(v => /natural|online|neural|google/i.test(v.name)) || en[0] || null;
+function pickBestVoice(list) {
+  const en = list || cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
+  for (const kw of FEMALE_PRIORITIES) {
+    const f = en.find(v => v.name.toLowerCase().includes(kw));
+    if (f) return f;
+  }
+  return en.find(v => /natural|online|neural/i.test(v.name)) || en[0] || null;
+}
+
+function getVoice() {
+  return cachedVoices.find(v => v.name === voiceSelect.value) || pickBestVoice();
 }
 
 function speakAndContinue(text) {
   const u = new SpeechSynthesisUtterance(text);
-  const v = pickVoice();
+  const v = getVoice();
   if (v) u.voice = v;
   u.rate = 0.75;
   u.lang = 'en-US';
@@ -205,8 +235,10 @@ function trimHistory(history) {
   return history.length > maxMessages ? history.slice(history.length - maxMessages) : history;
 }
 
-async function getAIReply(history) {
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL_ID + ':generateContent';
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function callGemini(modelId, history) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent';
   const body = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: history,
@@ -221,15 +253,30 @@ async function getAIReply(history) {
   const elapsed = Date.now() - t0;
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error('HTTP ' + res.status + ' (' + elapsed + 'ms): ' + errText.slice(0, 200));
+    throw new Error('HTTP ' + res.status + ' (' + elapsed + 'ms, ' + modelId + '): ' + errText.slice(0, 200));
   }
   const data = await res.json();
-  log('Risposta AI ricevuta in ' + elapsed + 'ms.');
+  log('Risposta da ' + modelId + ' ricevuta in ' + elapsed + 'ms.');
   const text = data.candidates && data.candidates[0] && data.candidates[0].content &&
                data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
                data.candidates[0].content.parts[0].text;
-  if (!text) throw new Error('Risposta inattesa: ' + JSON.stringify(data).slice(0, 200));
+  if (!text) throw new Error('Risposta inattesa da ' + modelId + ': ' + JSON.stringify(data).slice(0, 200));
   return text.trim();
+}
+
+async function getAIReply(history) {
+  const modelsToTry = [MODEL_ID, MODEL_ID, FALLBACK_MODEL_ID, FALLBACK_MODEL_ID];
+  let lastErr;
+  for (let i = 0; i < modelsToTry.length; i++) {
+    try {
+      return await callGemini(modelsToTry[i], history);
+    } catch (err) {
+      lastErr = err;
+      log('Tentativo ' + (i + 1) + ' fallito: ' + err.message);
+      if (i < modelsToTry.length - 1) await sleep(1000);
+    }
+  }
+  throw lastErr;
 }
 
 async function handleUserSpeech(text) {
