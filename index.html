@@ -3,182 +3,345 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>English Practice</title>
+<title>English Practice – Viola</title>
 <style>
   body {
     font-family: -apple-system, Roboto, "Segoe UI", Arial, sans-serif;
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 16px 16px 40px;
-    background: #fafafa;
-    color: #1a1a1a;
-    line-height: 1.4;
+    max-width: 640px; margin: 0 auto;
+    padding: 14px 14px 40px;
+    background: #fafafa; color: #1a1a1a; line-height: 1.4;
   }
-  h1 { font-size: 1.15rem; margin-bottom: 4px; }
-  p.intro { font-size: 0.85rem; color: #555; margin-top: 0; }
+  h1 { font-size: 1.1rem; margin: 0 0 2px; }
+  p.intro { font-size: 0.82rem; color: #666; margin: 0 0 10px; }
   .status {
-    font-size: 1.05rem;
-    font-weight: 600;
-    padding: 14px;
-    border-radius: 8px;
-    background: #e8edff;
-    border: 1px solid #c3cdf5;
-    margin: 12px 0;
+    font-size: 1rem; font-weight: 600;
+    padding: 12px; border-radius: 8px;
+    background: #e8edff; border: 1px solid #c3cdf5; margin-bottom: 10px;
   }
   .status.err { background: #fde8e8; border-color: #f3b3b3; color: #8a1f1f; }
+  .status.saving { background: #fff8e1; border-color: #ffe082; color: #6d4c00; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
   button {
-    font-size: 1rem;
-    padding: 14px 16px;
-    margin: 0 8px 14px 0;
-    border-radius: 8px;
-    border: 1px solid #999;
-    background: #fff;
+    font-size: 0.95rem; padding: 11px 14px;
+    border-radius: 8px; border: 1px solid #999;
+    background: #fff; cursor: pointer;
   }
   button:active { background: #e0e0e0; }
-  #transcript {
-    padding: 12px;
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    margin-bottom: 14px;
-    font-size: 1rem;
-    max-height: 300px;
-    overflow-y: auto;
+  button.primary { background: #3b5bdb; color: #fff; border-color: #3b5bdb; }
+  button.primary:active { background: #2f4ac4; }
+  button.danger { background: #c92a2a; color: #fff; border-color: #c92a2a; }
+  select {
+    font-size: 0.9rem; padding: 8px; border-radius: 8px;
+    border: 1px solid #999; width: 100%; margin-bottom: 10px;
   }
-  #transcript .line { margin-bottom: 10px; }
+  .label { font-size: 0.8rem; color: #555; margin-bottom: 3px; }
+  /* Level bar */
+  .level-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px; font-size: 0.88rem;
+  }
+  .level-bar { flex: 1; height: 8px; background: #ddd; border-radius: 4px; overflow: hidden; }
+  .level-fill { height: 100%; background: #3b5bdb; transition: width 0.5s; }
+  /* Transcript */
+  #transcript {
+    padding: 10px; background: #fff;
+    border: 1px solid #ccc; border-radius: 8px;
+    margin-bottom: 10px; max-height: 260px; overflow-y: auto;
+    font-size: 0.97rem;
+  }
+  #transcript .line { margin-bottom: 8px; }
   #transcript .who { font-weight: 700; }
+  #transcript .tip { color: #2f6b2f; font-style: italic; }
+  /* Memory panel */
+  #memPanel {
+    display: none; background: #fff;
+    border: 1px solid #ccc; border-radius: 8px;
+    padding: 10px; margin-bottom: 10px;
+    font-size: 0.85rem;
+  }
+  #memPanel h2 { font-size: 0.95rem; margin: 0 0 8px; }
+  #memPanel .section { margin-bottom: 8px; }
+  #memPanel .section strong { display: block; color: #555; margin-bottom: 2px; }
+  #memPanel ul { margin: 0; padding-left: 18px; }
+  /* Log */
   #log {
     font-family: ui-monospace, Menlo, monospace;
-    font-size: 0.72rem;
-    background: #111;
-    color: #6fdc6f;
-    padding: 10px;
-    border-radius: 8px;
-    height: 160px;
-    overflow-y: auto;
-    white-space: pre-wrap;
+    font-size: 0.7rem; background: #111; color: #6fdc6f;
+    padding: 8px; border-radius: 8px; height: 130px;
+    overflow-y: auto; white-space: pre-wrap;
   }
-  .label { font-size: 0.85rem; color: #555; margin-bottom: 4px; }
 </style>
 </head>
 <body>
-<h1>English Practice</h1>
-<p class="intro">Conversazione in inglese a mani libere. Premi "Avvia conversazione" la prima volta, poi parla normalmente.</p>
 
-<div class="status" id="status">Pronto. Premi "Avvia conversazione".</div>
+<h1>English Practice – Viola</h1>
+<p class="intro">Conversazione a mani libere. Premi Start la prima volta, poi parla normalmente.</p>
 
-<button id="startBtn">Avvia conversazione</button>
-<button id="stopBtn">Ferma</button>
-<button id="resetBtn">Reset conversazione</button>
+<div class="status" id="status">Pronto. Premi Start per iniziare.</div>
 
-<div class="label" style="margin-top:4px;">Voce di Emma:</div>
-<select id="voiceSelect" style="font-size:0.95rem;padding:8px;border-radius:8px;border:1px solid #999;width:100%;margin-bottom:14px;">
-  <option value="">— In caricamento voci... —</option>
-</select>
+<div class="buttons">
+  <button class="primary" id="startBtn">▶ Start</button>
+  <button id="stopBtn">⏹ Stop e salva</button>
+  <button id="memBtn">📊 Memoria</button>
+  <button id="resetMemBtn">🗑 Cancella memoria</button>
+</div>
+
+<div class="label">Voce di Viola:</div>
+<select id="voiceSelect"><option>— Caricamento voci... —</option></select>
+
+<div class="level-row">
+  <span id="levelLabel">Livello 1 / 5</span>
+  <div class="level-bar"><div class="level-fill" id="levelFill" style="width:20%"></div></div>
+  <span id="sessionLabel">Sessioni: 0</span>
+</div>
 
 <div class="label">Conversazione:</div>
 <div id="transcript"></div>
+
+<div id="memPanel">
+  <h2>📊 Memoria di Viola</h2>
+  <div class="section"><strong>Errori ricorrenti</strong><ul id="memErrors"><li>—</li></ul></div>
+  <div class="section"><strong>Argomenti già trattati</strong><ul id="memTopics"><li>—</li></ul></div>
+  <div class="section"><strong>Frasi da ripassare</strong><ul id="memPhrases"><li>—</li></ul></div>
+  <div class="section"><strong>Ultimo argomento:</strong> <span id="memLastTopic">—</span></div>
+</div>
 
 <div class="label">Log tecnico:</div>
 <div id="log"></div>
 
 <script>
-/* =========================================================
+/* =============================================
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
-   (presa da https://aistudio.google.com -> "Get API key")
-   ========================================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+   (da https://aistudio.google.com -> Get API key)
+   ============================================= */
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
-const GREETING = "Hi! I'm Emma, your English conversation partner. What did you do today?";
+/* ---- MEMORIA ---- */
+const MEMORY_KEY = 'violaMemory_v2';
+const DEFAULT_MEMORY = {
+  level: 1,
+  consecutiveGood: 0,
+  recentRepeats: 0,
+  recurringErrors: [],
+  topicsDiscussed: [],
+  lastTopic: '',
+  phrasesToReview: [],
+  sessionCount: 0,
+  totalExchanges: 0,
+  lastUpdated: null
+};
+const VOICE_RATES    = [0.70, 0.76, 0.82, 0.90, 1.00]; // level 1-5
+const LEVEL_UP_AT   = 8;  // scambi consecutivi buoni → livello su
+const LEVEL_DOWN_AT = 3;  // richieste di ripetizione → livello giù
 
-const SYSTEM_PROMPT = `You are Emma, a friendly and patient English conversation tutor helping an Italian adult learner at B1 (intermediate) level practice spoken English.
+function loadMemory() {
+  try {
+    const raw = localStorage.getItem(MEMORY_KEY);
+    return raw ? { ...DEFAULT_MEMORY, ...JSON.parse(raw) } : { ...DEFAULT_MEMORY };
+  } catch (e) { return { ...DEFAULT_MEMORY }; }
+}
+function saveMemory(m) {
+  try { localStorage.setItem(MEMORY_KEY, JSON.stringify(m)); } catch (e) {}
+}
 
-Rules you must always follow:
-- Keep every reply short: 1 to 3 sentences maximum. Your reply will be read aloud by a text-to-speech voice, so brevity is essential.
-- Use simple, everyday vocabulary and grammar suitable for B1 level. Avoid idioms, slang, and complex structures.
-- Always keep the conversation going by asking a natural follow-up question about everyday topics (work, hobbies, travel, daily life, opinions).
-- If the learner makes a meaningful grammar or vocabulary mistake, gently correct it: first respond naturally and warmly to what they meant, then add one short line starting with "Tip:" showing the more natural way to say it, followed by a very brief explanation in Italian in parentheses. Skip this for very minor or unclear errors.
-- Never lecture, never give long grammar explanations, never use emojis or markdown formatting since this is spoken aloud.
-- Respond only in plain text, in English (except for the short Italian clarification inside a "Tip:" line, when present).`;
+let memory = loadMemory();
 
-const statusEl = document.getElementById('status');
-const transcriptEl = document.getElementById('transcript');
-const logEl = document.getElementById('log');
+/* ---- UI helpers ---- */
+const statusEl   = document.getElementById('status');
+const transcEl   = document.getElementById('transcript');
+const logEl      = document.getElementById('log');
+const levelLabel = document.getElementById('levelLabel');
+const levelFill  = document.getElementById('levelFill');
+const sessionLbl = document.getElementById('sessionLabel');
 
 function log(msg) {
   const t = new Date().toLocaleTimeString();
   logEl.textContent += `[${t}] ${msg}\n`;
   logEl.scrollTop = logEl.scrollHeight;
 }
-function setStatus(text, isErr) {
-  statusEl.textContent = text;
-  statusEl.classList.toggle('err', !!isErr);
+function setStatus(txt, mode) {
+  statusEl.textContent = txt;
+  statusEl.className = 'status' + (mode ? ' ' + mode : '');
 }
-function appendTranscript(who, text) {
-  const div = document.createElement('div');
-  div.className = 'line';
-  div.innerHTML = '<span class="who">' + who + ':</span> ' + text;
-  transcriptEl.appendChild(div);
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+function updateLevelUI() {
+  levelLabel.textContent = 'Livello ' + memory.level + ' / 5';
+  levelFill.style.width  = (memory.level * 20) + '%';
+  sessionLbl.textContent = 'Sessioni: ' + memory.sessionCount;
 }
-
-log('User agent: ' + navigator.userAgent);
-
-let conversationHistory = []; // {role:'user'|'model', parts:[{text}]}
-let shouldListen = false;
-let busy = false;
-
-const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-
-if (!SpeechRecognitionCtor) {
-  setStatus('Riconoscimento vocale NON disponibile in questo browser.', true);
-  log('SpeechRecognition non supportata.');
-} else {
-  recognition = new SpeechRecognitionCtor();
-  recognition.lang = 'en-US';
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  recognition.onstart = () => { log('In ascolto.'); setStatus('In ascolto... parla in inglese'); };
-
-  recognition.onresult = (event) => {
-    let final = '';
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      if (event.results[i].isFinal) final += event.results[i][0].transcript;
-    }
-    if (final.trim()) {
-      handleUserSpeech(final.trim());
-    }
+function appendLine(who, text, isTip) {
+  const d = document.createElement('div');
+  d.className = 'line' + (isTip ? ' tip' : '');
+  d.innerHTML = '<span class="who">' + who + ':</span> ' + text;
+  transcEl.appendChild(d);
+  transcEl.scrollTop = transcEl.scrollHeight;
+}
+function renderMemPanel() {
+  const fillList = (id, arr) => {
+    const el = document.getElementById(id);
+    el.innerHTML = arr.length ? arr.map(x => '<li>' + x + '</li>').join('') : '<li>—</li>';
   };
+  fillList('memErrors',  memory.recurringErrors);
+  fillList('memTopics',  memory.topicsDiscussed);
+  fillList('memPhrases', memory.phrasesToReview);
+  document.getElementById('memLastTopic').textContent = memory.lastTopic || '—';
+}
+updateLevelUI();
 
-  recognition.onerror = (event) => {
-    log('ERRORE riconoscimento: ' + event.error);
-    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-      setStatus('Permesso microfono negato o bloccato.', true);
-      shouldListen = false;
-    }
-  };
+/* ---- PROMPT ---- */
+function buildSystemPrompt() {
+  const lvlDesc = ['principiante assoluto','base','elementare','pre-intermedio','intermedio'];
+  const errSec = memory.recurringErrors.length
+    ? '\n\nErrori ricorrenti di questo studente: ' + memory.recurringErrors.join('; ')
+      + '. Monitorali con attenzione e correggili quando si ripresentano.'
+    : '';
+  const topSec = memory.topicsDiscussed.length
+    ? '\n\nArgomenti già discussi nelle sessioni precedenti: '
+      + memory.topicsDiscussed.slice(-12).join(', ')
+      + '. Proponi argomenti nuovi.'
+    : '';
+  const lastSec = memory.lastTopic
+    ? '\n\nL\'ultima sessione si è conclusa parlando di: "' + memory.lastTopic
+      + '". Puoi riprendere da lì oppure proporre un argomento nuovo.'
+    : '';
+  const phraseSec = memory.phrasesToReview.length
+    ? '\n\nFrasi che lo studente vuole ripassare: ' + memory.phrasesToReview.join('; ')
+      + '. Introducile naturalmente nella conversazione.'
+    : '';
 
-  recognition.onend = () => {
-    log('Sessione riconoscimento terminata.');
-    if (shouldListen && !busy) {
-      try { recognition.start(); } catch (e) { log('Riavvio fallito: ' + e.message); }
-    }
-  };
+  return `You are Viola, a patient and friendly English conversation tutor for an Italian adult learner.
+Current level: ${memory.level}/5 (${lvlDesc[memory.level-1]}). Sessions completed: ${memory.sessionCount}.${errSec}${topSec}${lastSec}${phraseSec}
+
+CRITICAL RULES — follow every single one:
+1. BREVITY: maximum 1-2 short sentences per reply. Your words are read aloud. Too long = bad experience.
+2. VOCABULARY: level ${memory.level} appropriate. ${memory.level<=2?'Only very common simple words.':memory.level<=3?'Everyday common vocabulary only.':'Common vocabulary, simple phrasal verbs ok.'}
+3. Always end with ONE simple question to keep the conversation going.
+4. CORRECTIONS: if the learner makes a grammar or vocabulary error, first respond naturally to their meaning, then on a new line write exactly: "Tip: [corrected form] ([brief Italian explanation])". Skip tiny or unclear errors.
+5. Watch especially for: missing auxiliaries, wrong prepositions, article errors, wrong verb tense.
+6. Plain text only — no emojis, no markdown, no lists. This is read by text-to-speech.
+7. Respond in English only, except for the Italian note inside Tip lines.`;
 }
 
-function startListening() {
-  if (!recognition) return;
-  try { recognition.start(); } catch (e) { log('Errore avvio ascolto: ' + e.message); }
+/* ---- RIPETIZIONE detection ---- */
+const REPEAT_WORDS = ['repeat','again','say again','once more','pardon','what did you say',
+  "didn't understand","don't understand","cannot understand","can't understand",
+  'slower','too fast','come again','please say'];
+function isRepeatRequest(txt) {
+  const l = txt.toLowerCase();
+  return REPEAT_WORDS.some(w => l.includes(w));
 }
 
+/* ---- LEVEL update ---- */
+function applyExchangeResult(wasRepeat) {
+  if (wasRepeat) {
+    memory.consecutiveGood = 0;
+    memory.recentRepeats   = (memory.recentRepeats || 0) + 1;
+    if (memory.recentRepeats >= LEVEL_DOWN_AT && memory.level > 1) {
+      memory.level--;
+      memory.recentRepeats = 0;
+      log('Livello sceso a ' + memory.level + ' (troppe richieste di ripetizione)');
+      appendLine('Sistema', '⬇ Livello sceso a ' + memory.level + '/5 — rallento un po\'.');
+    }
+  } else {
+    memory.consecutiveGood = (memory.consecutiveGood || 0) + 1;
+    memory.recentRepeats   = Math.max(0, (memory.recentRepeats || 0) - 1);
+    if (memory.consecutiveGood >= LEVEL_UP_AT && memory.level < 5) {
+      memory.level++;
+      memory.consecutiveGood = 0;
+      log('Livello salito a ' + memory.level + ' (ottimi scambi consecutivi)');
+      appendLine('Sistema', '⬆ Ottimo! Livello salito a ' + memory.level + '/5 — aumento un po\' la velocità.');
+    }
+  }
+  memory.totalExchanges = (memory.totalExchanges || 0) + 1;
+  saveMemory(memory);
+  updateLevelUI();
+}
+
+/* ---- GEMINI calls ---- */
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function callGemini(modelId, contents, systemText) {
+  const body = { contents, generationConfig: { temperature: 0.6, maxOutputTokens: 160 } };
+  if (systemText) body.systemInstruction = { parts: [{ text: systemText }] };
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+    + modelId + ':generateContent';
+  const t0 = Date.now();
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY },
+    body: JSON.stringify(body)
+  });
+  const elapsed = Date.now() - t0;
+  if (!res.ok) {
+    const e = await res.text();
+    throw new Error('HTTP ' + res.status + ' (' + elapsed + 'ms, ' + modelId + '): ' + e.slice(0,180));
+  }
+  const data = await res.json();
+  log('Risposta da ' + modelId + ' in ' + elapsed + 'ms.');
+  const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!txt) throw new Error('Risposta vuota da ' + modelId);
+  return txt.trim();
+}
+
+async function getViolaReply(history) {
+  const models = [MODEL_ID, MODEL_ID, FALLBACK_MODEL_ID, FALLBACK_MODEL_ID];
+  let lastErr;
+  for (let i = 0; i < models.length; i++) {
+    try { return await callGemini(models[i], history, buildSystemPrompt()); }
+    catch (e) {
+      lastErr = e;
+      log('Tentativo ' + (i+1) + ' fallito: ' + e.message);
+      if (i < models.length - 1) await sleep(1000);
+    }
+  }
+  throw lastErr;
+}
+
+async function updateMemoryFromSession(history) {
+  if (history.length < 3) return;
+  const convo = history.map(m =>
+    (m.role === 'user' ? 'Studente: ' : 'Viola: ') + m.parts[0].text
+  ).join('\n');
+  const prompt = `Analizza questa conversazione di apprendimento dell'inglese e rispondi SOLO con un oggetto JSON valido (nessun markdown, nessuna spiegazione).
+Campi richiesti:
+- "newErrors": array di stringhe (max 3) con errori grammaticali/lessicali specifici dello studente (es. "usa 'I am go' invece di 'I am going'")
+- "topics": array di etichette (1-3 parole ciascuna) sugli argomenti trattati
+- "lastTopic": stringa, l'ultimo argomento discusso
+- "phrasesToReview": array (max 3) di frasi utili in inglese che lo studente ha usato in modo sbagliato o che dovrebbe praticare
+
+Conversazione:
+${convo}`;
+  try {
+    const raw = await callGemini(MODEL_ID, [{ role: 'user', parts: [{ text: prompt }] }]);
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    if (parsed.newErrors?.length)
+      memory.recurringErrors = [...new Set([...memory.recurringErrors, ...parsed.newErrors])].slice(-10);
+    if (parsed.topics?.length)
+      memory.topicsDiscussed = [...new Set([...memory.topicsDiscussed, ...parsed.topics])].slice(-30);
+    if (parsed.lastTopic) memory.lastTopic = parsed.lastTopic;
+    if (parsed.phrasesToReview?.length)
+      memory.phrasesToReview = [...new Set([...memory.phrasesToReview, ...parsed.phrasesToReview])].slice(-10);
+    memory.sessionCount   = (memory.sessionCount || 0) + 1;
+    memory.lastUpdated    = new Date().toISOString();
+    memory.consecutiveGood = 0;
+    memory.recentRepeats   = 0;
+    saveMemory(memory);
+    updateLevelUI();
+    log('Memoria aggiornata con successo.');
+  } catch (e) {
+    memory.sessionCount = (memory.sessionCount || 0) + 1;
+    memory.lastUpdated  = new Date().toISOString();
+    saveMemory(memory);
+    log('Aggiornamento memoria parziale: ' + e.message);
+  }
+}
+
+/* ---- VOICE ---- */
 let cachedVoices = [];
 const voiceSelect = document.getElementById('voiceSelect');
-
-const FEMALE_PRIORITIES = ['samantha','karen','moira','tessa','victoria','fiona',
+const FEMALE_PRIO = ['samantha','karen','moira','tessa','victoria','fiona',
   'google us english','microsoft zira','microsoft aria','microsoft jenny'];
 
 function loadVoices() {
@@ -189,152 +352,181 @@ function loadVoices() {
   log('Voci inglesi: ' + en.map(v => v.name).join(', '));
   voiceSelect.innerHTML = '';
   en.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v.name;
-    opt.textContent = v.name + ' (' + v.lang + ')';
-    voiceSelect.appendChild(opt);
+    const o = document.createElement('option');
+    o.value = v.name;
+    o.textContent = v.name + ' (' + v.lang + ')';
+    voiceSelect.appendChild(o);
   });
-  const best = pickBestVoice(en);
+  const best = pickBest(en);
   if (best) voiceSelect.value = best.name;
 }
 speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
 
-function pickBestVoice(list) {
+function pickBest(list) {
   const en = list || cachedVoices.filter(v => v.lang.toLowerCase().startsWith('en'));
-  for (const kw of FEMALE_PRIORITIES) {
+  for (const kw of FEMALE_PRIO) {
     const f = en.find(v => v.name.toLowerCase().includes(kw));
     if (f) return f;
   }
   return en.find(v => /natural|online|neural/i.test(v.name)) || en[0] || null;
 }
-
 function getVoice() {
-  return cachedVoices.find(v => v.name === voiceSelect.value) || pickBestVoice();
+  return cachedVoices.find(v => v.name === voiceSelect.value) || pickBest();
 }
 
+/* ---- TTS ---- */
 function speakAndContinue(text) {
   const u = new SpeechSynthesisUtterance(text);
   const v = getVoice();
   if (v) u.voice = v;
-  u.rate = 0.75;
+  u.rate = VOICE_RATES[memory.level - 1];
   u.lang = 'en-US';
   busy = true;
-  setStatus('Sto parlando...');
+  setStatus('Viola sta parlando... (livello ' + memory.level + ')');
   u.onend = () => {
     busy = false;
     if (shouldListen) { setStatus('In ascolto... parla in inglese'); startListening(); }
-    else { setStatus('Pronto. Premi "Avvia conversazione".'); }
   };
-  u.onerror = (e) => { log('Errore sintesi: ' + e.error); busy = false; };
+  u.onerror = e => { log('Errore TTS: ' + e.error); busy = false; if (shouldListen) startListening(); };
   speechSynthesis.speak(u);
 }
 
-function trimHistory(history) {
-  const maxMessages = 16;
-  return history.length > maxMessages ? history.slice(history.length - maxMessages) : history;
-}
+/* ---- SPEECH RECOGNITION ---- */
+const SRC = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null, shouldListen = false, busy = false;
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+if (!SRC) {
+  setStatus('Riconoscimento vocale NON disponibile in questo browser.', 'err');
+} else {
+  recognition = new SRC();
+  recognition.lang = 'en-US';
+  recognition.continuous = true;
+  recognition.interimResults = true;
 
-async function callGemini(modelId, history) {
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent';
-  const body = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: history,
-    generationConfig: { temperature: 0.6, maxOutputTokens: 200 }
+  recognition.onstart = () => { log('In ascolto.'); setStatus('In ascolto... parla in inglese'); };
+  recognition.onresult = event => {
+    let final = '';
+    for (let i = event.resultIndex; i < event.results.length; i++)
+      if (event.results[i].isFinal) final += event.results[i][0].transcript;
+    if (final.trim()) handleUserSpeech(final.trim());
   };
-  const t0 = Date.now();
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY },
-    body: JSON.stringify(body)
-  });
-  const elapsed = Date.now() - t0;
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error('HTTP ' + res.status + ' (' + elapsed + 'ms, ' + modelId + '): ' + errText.slice(0, 200));
-  }
-  const data = await res.json();
-  log('Risposta da ' + modelId + ' ricevuta in ' + elapsed + 'ms.');
-  const text = data.candidates && data.candidates[0] && data.candidates[0].content &&
-               data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
-               data.candidates[0].content.parts[0].text;
-  if (!text) throw new Error('Risposta inattesa da ' + modelId + ': ' + JSON.stringify(data).slice(0, 200));
-  return text.trim();
+  recognition.onerror = event => {
+    log('ERRORE riconoscimento: ' + event.error);
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      setStatus('Permesso microfono negato.', 'err'); shouldListen = false;
+    }
+  };
+  recognition.onend = () => {
+    log('Sessione riconoscimento terminata.');
+    if (shouldListen && !busy) { try { recognition.start(); } catch(e) { log('Riavvio fallito: ' + e.message); } }
+  };
 }
 
-async function getAIReply(history) {
-  const modelsToTry = [MODEL_ID, MODEL_ID, FALLBACK_MODEL_ID, FALLBACK_MODEL_ID];
-  let lastErr;
-  for (let i = 0; i < modelsToTry.length; i++) {
-    try {
-      return await callGemini(modelsToTry[i], history);
-    } catch (err) {
-      lastErr = err;
-      log('Tentativo ' + (i + 1) + ' fallito: ' + err.message);
-      if (i < modelsToTry.length - 1) await sleep(1000);
-    }
-  }
-  throw lastErr;
+function startListening() {
+  if (!recognition) return;
+  try { recognition.start(); } catch(e) { log('Avvio: ' + e.message); }
+}
+
+/* ---- CONVERSATION ---- */
+let convHistory = [];
+
+function trimHistory(h) {
+  return h.length > 18 ? h.slice(h.length - 18) : h;
 }
 
 async function handleUserSpeech(text) {
-  conversationHistory.push({ role: 'user', parts: [{ text }] });
-  appendTranscript('Tu', text);
+  appendLine('Tu', text);
+  const isRepeat = isRepeatRequest(text);
+  if (!isRepeat) applyExchangeResult(false);
+  else           applyExchangeResult(true);
+
+  convHistory.push({ role: 'user', parts: [{ text }] });
   busy = true;
   if (recognition) recognition.stop();
   setStatus('Sto pensando...');
-  log('Invio a Gemini: "' + text + '"');
+  log('Invio a Viola: "' + text + '"');
+
   try {
-    const reply = await getAIReply(trimHistory(conversationHistory));
-    conversationHistory.push({ role: 'model', parts: [{ text: reply }] });
-    appendTranscript('Emma', reply);
+    const reply = await getViolaReply(trimHistory(convHistory));
+    convHistory.push({ role: 'model', parts: [{ text: reply }] });
+    // Separate Tip lines visually
+    const parts = reply.split(/(Tip:.*)/);
+    parts.forEach(p => {
+      const clean = p.trim();
+      if (!clean) return;
+      appendLine('Viola', clean, clean.startsWith('Tip:'));
+    });
     speakAndContinue(reply);
   } catch (err) {
     log('Errore AI: ' + err.message);
-    setStatus('Errore con l\'AI, riprovo ad ascoltare...', true);
+    setStatus('Errore con l\'AI — riprovo ad ascoltare.', 'err');
     busy = false;
     if (shouldListen) startListening();
   }
 }
 
+function buildGreeting() {
+  if (memory.sessionCount === 0)
+    return "Hi! I'm Viola, your English tutor. Nice to meet you! What's your name?";
+  if (memory.lastTopic)
+    return "Welcome back! Last time we talked about " + memory.lastTopic
+      + ". Would you like to continue, or start with something new?";
+  return "Welcome back! Good to see you again. How are you today?";
+}
+
+/* ---- BUTTONS ---- */
 document.getElementById('startBtn').onclick = () => {
-  if (API_KEY.indexOf('INSERISCI') === 0) {
-    setStatus('Devi prima inserire la tua chiave Gemini nel codice (vedi istruzioni).', true);
-    log('Chiave API non inserita.');
+  if (API_KEY.startsWith('INSERISCI')) {
+    setStatus('Inserisci la tua chiave Gemini nel codice prima di continuare.', 'err');
     return;
   }
   shouldListen = true;
-  if (conversationHistory.length === 0) {
-    conversationHistory.push({ role: 'model', parts: [{ text: GREETING }] });
-    appendTranscript('Emma', GREETING);
-    speakAndContinue(GREETING);
+  speechSynthesis.speak(new SpeechSynthesisUtterance('')); // unlock iOS audio
+  if (convHistory.length === 0) {
+    const greeting = buildGreeting();
+    convHistory.push({ role: 'model', parts: [{ text: greeting }] });
+    appendLine('Viola', greeting);
+    speakAndContinue(greeting);
   } else {
-    speechSynthesis.speak(new SpeechSynthesisUtterance(''));
     startListening();
   }
 };
 
-document.getElementById('stopBtn').onclick = () => {
+document.getElementById('stopBtn').onclick = async () => {
   shouldListen = false;
+  busy = false;
   if (recognition) recognition.stop();
   speechSynthesis.cancel();
-  busy = false;
-  setStatus('Fermato.');
-  log('Stop manuale.');
+  setStatus('Salvataggio progressi...', 'saving');
+  await updateMemoryFromSession(convHistory);
+  renderMemPanel();
+  setStatus('Sessione terminata e progressi salvati. Premi Start per ricominciare.');
+  log('Sessione terminata.');
 };
 
-document.getElementById('resetBtn').onclick = () => {
-  shouldListen = false;
-  busy = false;
-  if (recognition) recognition.stop();
-  speechSynthesis.cancel();
-  conversationHistory = [];
-  transcriptEl.innerHTML = '';
-  setStatus('Conversazione azzerata. Premi "Avvia conversazione" per ricominciare.');
-  log('Reset eseguito.');
+document.getElementById('memBtn').onclick = () => {
+  const p = document.getElementById('memPanel');
+  if (p.style.display === 'block') { p.style.display = 'none'; return; }
+  renderMemPanel();
+  p.style.display = 'block';
 };
+
+document.getElementById('resetMemBtn').onclick = () => {
+  if (!confirm('Sicuro? Cancellerai tutti i progressi salvati.')) return;
+  localStorage.removeItem(MEMORY_KEY);
+  memory = { ...DEFAULT_MEMORY };
+  saveMemory(memory);
+  updateLevelUI();
+  convHistory = [];
+  transcEl.innerHTML = '';
+  renderMemPanel();
+  setStatus('Memoria cancellata. Premi Start per iniziare da capo.');
+  log('Memoria cancellata.');
+};
+
+log('User agent: ' + navigator.userAgent);
+log('Livello attuale: ' + memory.level + ' | Sessioni: ' + memory.sessionCount);
 </script>
 </body>
 </html>
