@@ -114,7 +114,7 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
@@ -214,13 +214,13 @@ function buildSystemPrompt() {
 Current level: ${memory.level}/5 (${lvlDesc[memory.level-1]}). Sessions completed: ${memory.sessionCount}.${errSec}${topSec}${lastSec}${phraseSec}
 
 CRITICAL RULES — follow every single one:
-1. BREVITY: maximum 1-2 short sentences per reply. Your words are read aloud. Too long = bad experience.
+1. BREVITY: For casual conversation, 2-3 short sentences. If the learner asks a direct question, answer it properly in 3-5 sentences, then add your follow-up question. Never give a one-word or evasive answer to a real question.
 2. VOCABULARY: level ${memory.level} appropriate. ${memory.level<=2?'Only very common simple words.':memory.level<=3?'Everyday common vocabulary only.':'Common vocabulary, simple phrasal verbs ok.'}
 3. Always end with ONE simple question to keep the conversation going.
-4. CORRECTIONS: if the learner makes a grammar or vocabulary error, first respond naturally to their meaning, then on a new line write exactly: "Tip: [corrected form] ([brief Italian explanation])". Skip tiny or unclear errors.
+4. CORRECTIONS: if the learner makes a grammar or vocabulary error, first respond naturally to their meaning, then on a NEW LINE write exactly: "Tip: [corrected English form] ([brevissima spiegazione in italiano tra parentesi])". Skip tiny or unclear errors. Never correct pronunciation since you only see transcribed text.
 5. Watch especially for: missing auxiliaries, wrong prepositions, article errors, wrong verb tense.
-6. Plain text only — no emojis, no markdown, no lists. This is read by text-to-speech.
-7. Respond in English only, except for the Italian note inside Tip lines.`;
+6. Plain text only — no emojis, no markdown, no lists. This text is partially read by text-to-speech.
+7. Respond in English only, except for the short Italian note inside Tip lines.`;
 }
 
 /* ---- RIPETIZIONE detection ---- */
@@ -262,7 +262,7 @@ function applyExchangeResult(wasRepeat) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function callGemini(modelId, contents, systemText) {
-  const body = { contents, generationConfig: { temperature: 0.6, maxOutputTokens: 160 } };
+  const body = { contents, generationConfig: { temperature: 0.6, maxOutputTokens: 280 } };
   if (systemText) body.systemInstruction = { parts: [{ text: systemText }] };
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
     + modelId + ':generateContent';
@@ -376,20 +376,54 @@ function getVoice() {
 }
 
 /* ---- TTS ---- */
+function findItalianVoice() {
+  const it = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('it'));
+  log('Voci italiane trovate: ' + (it.length ? it.map(v=>v.name).join(', ') : 'nessuna'));
+  return it.find(v => /alice|google italiano/i.test(v.name)) || it[0] || null;
+}
+
+function extractParts(fullReply) {
+  const lines = fullReply.split('\n');
+  const tipLine = lines.find(l => l.trim().startsWith('Tip:')) || '';
+  const english = lines.filter(l => !l.trim().startsWith('Tip:')).join(' ').trim();
+  return { english, tipLine };
+}
+
 function speakAndContinue(text) {
-  const u = new SpeechSynthesisUtterance(text);
-  const v = getVoice();
-  if (v) u.voice = v;
-  u.rate = VOICE_RATES[memory.level - 1];
-  u.lang = 'en-US';
-  busy = true;
-  setStatus('Viola sta parlando... (livello ' + memory.level + ')');
-  u.onend = () => {
+  const { english, tipLine } = extractParts(text);
+
+  const onAllDone = () => {
     busy = false;
     if (shouldListen) { setStatus('In ascolto... parla in inglese'); startListening(); }
   };
-  u.onerror = e => { log('Errore TTS: ' + e.error); busy = false; if (shouldListen) startListening(); };
-  speechSynthesis.speak(u);
+
+  const speakTip = () => {
+    if (!tipLine) { onAllDone(); return; }
+    const itVoice = findItalianVoice();
+    const u2 = new SpeechSynthesisUtterance(tipLine);
+    if (itVoice) { u2.voice = itVoice; u2.lang = 'it-IT'; }
+    else { u2.voice = getVoice(); u2.lang = 'en-US'; } // fallback voce inglese
+    u2.rate = 0.85;
+    u2.onend = onAllDone;
+    u2.onerror = () => { log('Errore TTS tip italiano'); onAllDone(); };
+    speechSynthesis.speak(u2);
+  };
+
+  busy = true;
+  setStatus('Viola sta parlando... (livello ' + memory.level + ')');
+
+  if (english) {
+    const u1 = new SpeechSynthesisUtterance(english);
+    const v = getVoice();
+    if (v) u1.voice = v;
+    u1.rate = VOICE_RATES[memory.level - 1];
+    u1.lang = 'en-US';
+    u1.onend = speakTip;
+    u1.onerror = () => { log('Errore TTS inglese'); speakTip(); };
+    speechSynthesis.speak(u1);
+  } else {
+    speakTip();
+  }
 }
 
 /* ---- SPEECH RECOGNITION ---- */
@@ -405,11 +439,25 @@ if (!SRC) {
   recognition.interimResults = true;
 
   recognition.onstart = () => { log('In ascolto.'); setStatus('In ascolto... parla in inglese'); };
+
+  let pendingText = '';
+  let silenceTimer = null;
+  const SILENCE_DELAY = 1600; // ms di silenzio prima di inviare
+
   recognition.onresult = event => {
     let final = '';
     for (let i = event.resultIndex; i < event.results.length; i++)
       if (event.results[i].isFinal) final += event.results[i][0].transcript;
-    if (final.trim()) handleUserSpeech(final.trim());
+    if (final.trim()) {
+      pendingText += ' ' + final.trim();
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => {
+        const text = pendingText.trim();
+        pendingText = '';
+        silenceTimer = null;
+        if (text) handleUserSpeech(text);
+      }, SILENCE_DELAY);
+    }
   };
   recognition.onerror = event => {
     log('ERRORE riconoscimento: ' + event.error);
