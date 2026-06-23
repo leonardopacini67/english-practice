@@ -114,7 +114,7 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
@@ -350,6 +350,8 @@ function loadVoices() {
   cachedVoices = all;
   const en = all.filter(v => v.lang.toLowerCase().startsWith('en'));
   log('Voci inglesi: ' + en.map(v => v.name).join(', '));
+  const it = all.filter(v => v.lang.toLowerCase().startsWith('it'));
+  log('Voci italiane: ' + (it.length ? it.map(v => v.name).join(', ') : 'nessuna'));
   voiceSelect.innerHTML = '';
   en.forEach(v => {
     const o = document.createElement('option');
