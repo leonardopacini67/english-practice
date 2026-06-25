@@ -114,7 +114,7 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
@@ -377,11 +377,26 @@ function getVoice() {
   return cachedVoices.find(v => v.name === voiceSelect.value) || pickBest();
 }
 
+/* ---- WAKE LOCK ---- */
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) { log('Wake lock non supportato da questo browser.'); return; }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    log('Wake lock attivo — schermo non si spegnerà.');
+    wakeLock.addEventListener('release', () => log('Wake lock rilasciato.'));
+  } catch (e) { log('Wake lock errore: ' + e.message); }
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(()=>{}); wakeLock = null; }
+}
+
 /* ---- TTS ---- */
-function findItalianVoice() {
-  const it = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('it'));
-  log('Voci italiane trovate: ' + (it.length ? it.map(v=>v.name).join(', ') : 'nessuna'));
-  return it.find(v => /alice|google italiano/i.test(v.name)) || it[0] || null;
+function parseTip(tipLine) {
+  // Format atteso: "Tip: [forma inglese corretta] ([spiegazione italiana])"
+  const match = tipLine.match(/^Tip:\s*(.*?)\s*\(([^)]+)\)\s*$/);
+  if (match) return { english: 'Tip: ' + match[1].trim(), italian: match[2].trim() };
+  return { english: tipLine, italian: '' }; // fallback: tutto in inglese
 }
 
 function extractParts(fullReply) {
@@ -391,41 +406,58 @@ function extractParts(fullReply) {
   return { english, tipLine };
 }
 
+function findItalianVoice() {
+  const it = cachedVoices.filter(v => v.lang.toLowerCase().startsWith('it'));
+  return it.find(v => /alice|google italiano/i.test(v.name)) || it[0] || null;
+}
+
+function makeSpeech(text, voice, rate, lang) {
+  const u = new SpeechSynthesisUtterance(text);
+  if (voice) u.voice = voice;
+  u.rate = rate;
+  u.lang = lang;
+  return u;
+}
+
 function speakAndContinue(text) {
   const { english, tipLine } = extractParts(text);
+  const enVoice = getVoice();
+  const itVoice = findItalianVoice();
+  const enRate  = VOICE_RATES[memory.level - 1];
 
   const onAllDone = () => {
     busy = false;
     if (shouldListen) { setStatus('In ascolto... parla in inglese'); startListening(); }
   };
 
-  const speakTip = () => {
-    if (!tipLine) { onAllDone(); return; }
-    const itVoice = findItalianVoice();
-    const u2 = new SpeechSynthesisUtterance(tipLine);
-    if (itVoice) { u2.voice = itVoice; u2.lang = 'it-IT'; }
-    else { u2.voice = getVoice(); u2.lang = 'en-US'; } // fallback voce inglese
-    u2.rate = 0.85;
-    u2.onend = onAllDone;
-    u2.onerror = () => { log('Errore TTS tip italiano'); onAllDone(); };
-    speechSynthesis.speak(u2);
-  };
+  // Catena: inglese principale → parte inglese del Tip → parte italiana del Tip
+  const utterances = [];
+
+  if (english) {
+    utterances.push(makeSpeech(english, enVoice, enRate, 'en-US'));
+  }
+
+  if (tipLine) {
+    const { english: tipEn, italian: tipIt } = parseTip(tipLine);
+    if (tipEn) utterances.push(makeSpeech(tipEn, enVoice, enRate, 'en-US'));
+    if (tipIt) {
+      const itRate = 0.85;
+      utterances.push(makeSpeech(tipIt, itVoice || enVoice, itRate, itVoice ? 'it-IT' : 'en-US'));
+    }
+  }
+
+  if (!utterances.length) { onAllDone(); return; }
+
+  // Collega gli utterance in sequenza tramite onend
+  for (let i = 0; i < utterances.length; i++) {
+    const isLast = i === utterances.length - 1;
+    utterances[i].onend   = isLast ? onAllDone : () => speechSynthesis.speak(utterances[i + 1]);
+    utterances[i].onerror = isLast ? onAllDone : () => speechSynthesis.speak(utterances[i + 1]);
+  }
 
   busy = true;
   setStatus('Viola sta parlando... (livello ' + memory.level + ')');
-
-  if (english) {
-    const u1 = new SpeechSynthesisUtterance(english);
-    const v = getVoice();
-    if (v) u1.voice = v;
-    u1.rate = VOICE_RATES[memory.level - 1];
-    u1.lang = 'en-US';
-    u1.onend = speakTip;
-    u1.onerror = () => { log('Errore TTS inglese'); speakTip(); };
-    speechSynthesis.speak(u1);
-  } else {
-    speakTip();
-  }
+  speechSynthesis.speak(utterances[0]);
 }
 
 /* ---- SPEECH RECOGNITION ---- */
@@ -532,6 +564,7 @@ document.getElementById('startBtn').onclick = () => {
     return;
   }
   shouldListen = true;
+  requestWakeLock();
   speechSynthesis.speak(new SpeechSynthesisUtterance('')); // unlock iOS audio
   if (convHistory.length === 0) {
     const greeting = buildGreeting();
@@ -548,6 +581,7 @@ document.getElementById('stopBtn').onclick = async () => {
   busy = false;
   if (recognition) recognition.stop();
   speechSynthesis.cancel();
+  releaseWakeLock();
   setStatus('Salvataggio progressi...', 'saving');
   await updateMemoryFromSession(convHistory);
   renderMemPanel();
