@@ -114,7 +114,7 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
@@ -213,6 +213,8 @@ function buildSystemPrompt() {
   return `You are Viola, a patient and friendly English conversation tutor for an Italian adult learner.
 Current level: ${memory.level}/5 (${lvlDesc[memory.level-1]}). Sessions completed: ${memory.sessionCount}.${errSec}${topSec}${lastSec}${phraseSec}
 
+IMPORTANT CONTEXT: You communicate with the learner through text-to-speech synthesis. You DO speak out loud at a controllable speed. The current speech rate is level ${memory.level}/5. When the learner asks you to speak more slowly, repeat something, or says they did not understand, respond warmly and say you will speak more slowly or repeat the concept — because the system actually will reduce the speed automatically. Never say you cannot control your speed or that you are a text program.
+
 CRITICAL RULES — follow every single one:
 1. BREVITY: For casual conversation, 2-3 short sentences. If the learner asks a direct question, answer it properly in 3-5 sentences, then add your follow-up question. Never give a one-word or evasive answer to a real question.
 2. VOCABULARY: level ${memory.level} appropriate. ${memory.level<=2?'Only very common simple words.':memory.level<=3?'Everyday common vocabulary only.':'Common vocabulary, simple phrasal verbs ok.'}
@@ -226,7 +228,7 @@ CRITICAL RULES — follow every single one:
 /* ---- RIPETIZIONE detection ---- */
 const REPEAT_WORDS = ['repeat','again','say again','once more','pardon','what did you say',
   "didn't understand","don't understand","cannot understand","can't understand",
-  'slower','too fast','come again','please say'];
+  'slower','more slowly','speak slowly','slowly please','too fast','come again','please say'];
 function isRepeatRequest(txt) {
   const l = txt.toLowerCase();
   return REPEAT_WORDS.some(w => l.includes(w));
@@ -401,9 +403,9 @@ function parseTip(tipLine) {
 
 function extractParts(fullReply) {
   const lines = fullReply.split('\n');
-  const tipLine = lines.find(l => l.trim().startsWith('Tip:')) || '';
-  const english = lines.filter(l => !l.trim().startsWith('Tip:')).join(' ').trim();
-  return { english, tipLine };
+  const tipLines = lines.filter(l => l.trim().startsWith('Tip:'));
+  const english  = lines.filter(l => !l.trim().startsWith('Tip:')).join(' ').trim();
+  return { english, tipLines };
 }
 
 function findItalianVoice() {
@@ -420,7 +422,7 @@ function makeSpeech(text, voice, rate, lang) {
 }
 
 function speakAndContinue(text) {
-  const { english, tipLine } = extractParts(text);
+  const { english, tipLines } = extractParts(text);
   const enVoice = getVoice();
   const itVoice = findItalianVoice();
   const enRate  = VOICE_RATES[memory.level - 1];
@@ -430,29 +432,26 @@ function speakAndContinue(text) {
     if (shouldListen) { setStatus('In ascolto... parla in inglese'); startListening(); }
   };
 
-  // Catena: inglese principale → parte inglese del Tip → parte italiana del Tip
   const utterances = [];
 
   if (english) {
     utterances.push(makeSpeech(english, enVoice, enRate, 'en-US'));
   }
 
-  if (tipLine) {
+  for (const tipLine of tipLines) {
     const { english: tipEn, italian: tipIt } = parseTip(tipLine);
     if (tipEn) utterances.push(makeSpeech(tipEn, enVoice, enRate, 'en-US'));
-    if (tipIt) {
-      const itRate = 0.85;
-      utterances.push(makeSpeech(tipIt, itVoice || enVoice, itRate, itVoice ? 'it-IT' : 'en-US'));
-    }
+    if (tipIt) utterances.push(makeSpeech(tipIt, itVoice || enVoice, 0.85, itVoice ? 'it-IT' : 'en-US'));
   }
 
   if (!utterances.length) { onAllDone(); return; }
 
-  // Collega gli utterance in sequenza tramite onend
+  // Collega gli utterance in sequenza tramite onend — usa indice fisso per closure
   for (let i = 0; i < utterances.length; i++) {
+    const next = utterances[i + 1];
     const isLast = i === utterances.length - 1;
-    utterances[i].onend   = isLast ? onAllDone : () => speechSynthesis.speak(utterances[i + 1]);
-    utterances[i].onerror = isLast ? onAllDone : () => speechSynthesis.speak(utterances[i + 1]);
+    utterances[i].onend   = isLast ? onAllDone : () => speechSynthesis.speak(next);
+    utterances[i].onerror = isLast ? onAllDone : () => speechSynthesis.speak(next);
   }
 
   busy = true;
