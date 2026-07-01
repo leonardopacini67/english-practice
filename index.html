@@ -137,7 +137,7 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
@@ -264,7 +264,7 @@ function buildSystemPrompt() {
     : '';
 
   const italianModeSec = italianMode
-    ? `\n\nSPECIAL MODE ACTIVE: The learner has switched to Italian-help mode. They will speak to you in Italian, often asking how to say or explain something in English. Respond using a MIXED format: write the Italian parts inside parentheses, and the English parts outside parentheses, alternating naturally like a real bilingual teacher. Example: "(Si dice) Tomorrow I'm going to my mother's place for dinner. (Questa è la forma più naturale.)" Keep explanations short and clear. Always include at least one clean English sentence they can repeat.`
+    ? `\n\nSPECIAL MODE ACTIVE: The learner has switched to Italian-help mode. They will speak to you in Italian, often asking how to say or explain something in English. Respond using a MIXED format: write the Italian parts inside round parentheses ( ), and the English parts outside parentheses, alternating naturally like a real bilingual teacher. Example: "(Si dice) Tomorrow I'm going to my mother's place for dinner. (Questa è la forma più naturale.)" STRICT FORMATTING RULE: use ONLY round parentheses ( ) to mark Italian text. NEVER use quotation marks, brackets, or any other punctuation for this purpose — quotation marks are not a valid substitute and will break the audio output. Keep explanations short and clear. Always include at least one clean English sentence they can repeat.`
     : '';
 
   const vocabTier = memory.level <= 2
@@ -481,17 +481,18 @@ function releaseWakeLock() {
 /* ---- TTS ---- */
 // Spezza un testo in segmenti alternati: fuori parentesi = inglese, dentro parentesi = italiano
 function splitBilingual(text) {
+  const cleaned = text.replace(/["“”]/g, ''); // rimuove virgolette residue, non devono essere lette
   const segments = [];
   const re = /\(([^)]+)\)/g;
   let lastIndex = 0, m;
-  while ((m = re.exec(text)) !== null) {
-    const before = text.slice(lastIndex, m.index).trim();
+  while ((m = re.exec(cleaned)) !== null) {
+    const before = cleaned.slice(lastIndex, m.index).trim();
     if (before) segments.push({ lang: 'en', text: before });
     const inside = m[1].trim();
     if (inside) segments.push({ lang: 'it', text: inside });
     lastIndex = re.lastIndex;
   }
-  const tail = text.slice(lastIndex).trim();
+  const tail = cleaned.slice(lastIndex).trim();
   if (tail) segments.push({ lang: 'en', text: tail });
   return segments;
 }
@@ -570,8 +571,10 @@ const SRC = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null, shouldListen = false, busy = false;
 let italianMode = false;
 
-const SWITCH_TO_ITALIAN = ['switch to italian','activate italian','italian mode','speak italian'];
-const SWITCH_TO_ENGLISH = ['switch to english','activate english','english mode','speak english'];
+const SWITCH_TO_ITALIAN = ['switch to italian','activate italian','italian mode','speak italian',
+  'italiano','italian please','in italian','help in italian'];
+const SWITCH_TO_ENGLISH = ['switch to english','activate english','english mode','speak english',
+  'inglese','english please','in english','back to english'];
 
 function detectLanguageSwitch(text) {
   const l = text.toLowerCase().trim();
