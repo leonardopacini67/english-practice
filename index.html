@@ -75,7 +75,7 @@
 <body>
 
 <h1>English Practice – Viola</h1>
-<p class="intro">Conversazione a mani libere. Premi Start la prima volta, poi parla normalmente.</p>
+<p class="intro">Conversazione a mani libere. Premi Start la prima volta, poi parla normalmente. Dì "Switch to Italian" se vuoi chiedere qualcosa in italiano, "Switch to English" per tornare.</p>
 
 <div class="status" id="status">Pronto. Premi Start per iniziare.</div>
 
@@ -90,9 +90,32 @@
 <select id="voiceSelect"><option>— Caricamento voci... —</option></select>
 
 <div class="level-row">
-  <span id="levelLabel">Livello 1 / 5</span>
-  <div class="level-bar"><div class="level-fill" id="levelFill" style="width:20%"></div></div>
+  <span id="levelLabel">Livello 1 / 10</span>
+  <div class="level-bar"><div class="level-fill" id="levelFill" style="width:10%"></div></div>
   <span id="sessionLabel">Sessioni: 0</span>
+</div>
+
+<div style="background:#fff; border:1px solid #ccc; border-radius:8px; padding:10px; margin-bottom:10px;">
+  <div class="label" style="margin-bottom:4px;">Livello contenuti (1-10) — modificabile in qualsiasi momento:</div>
+  <select id="contentLevelSelect" style="width:100%; padding:8px; border-radius:8px; border:1px solid #999; font-size:0.9rem; margin-bottom:12px;">
+    <option value="1">1 – Principiante assoluto</option>
+    <option value="2">2 – Base</option>
+    <option value="3">3 – Base+</option>
+    <option value="4">4 – Elementare</option>
+    <option value="5">5 – Elementare+</option>
+    <option value="6">6 – Pre-intermedio</option>
+    <option value="7">7 – Pre-intermedio+</option>
+    <option value="8">8 – Intermedio</option>
+    <option value="9">9 – Intermedio+</option>
+    <option value="10">10 – Intermedio solido</option>
+  </select>
+
+  <div class="label" style="margin-bottom:4px;">Velocità voce inglese (1 = 0.50x lentissima, 10 = 1.00x normale UK/US):</div>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <input type="range" id="speedSlider" min="1" max="10" step="1" value="1" style="flex:1;">
+    <span id="speedValueLabel" style="font-size:0.85rem; min-width:78px; text-align:right;">1/10 (0.50x)</span>
+  </div>
+  <div style="font-size:0.75rem; color:#888; margin-top:4px;">Puoi anche dire a voce "speak faster" / "speak slower"</div>
 </div>
 
 <div class="label">Conversazione:</div>
@@ -114,14 +137,15 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
 /* ---- MEMORIA ---- */
-const MEMORY_KEY = 'violaMemory_v2';
+const MEMORY_KEY = 'violaMemory_v3';
 const DEFAULT_MEMORY = {
   level: 1,
+  speechLevel: 1, // 1-10, mappato su rateFromLevel()
   consecutiveGood: 0,
   recentRepeats: 0,
   recurringErrors: [],
@@ -132,9 +156,14 @@ const DEFAULT_MEMORY = {
   totalExchanges: 0,
   lastUpdated: null
 };
-const VOICE_RATES    = [0.70, 0.76, 0.82, 0.90, 1.00]; // level 1-5
-const LEVEL_UP_AT   = 8;  // scambi consecutivi buoni → livello su
-const LEVEL_DOWN_AT = 3;  // richieste di ripetizione → livello giù
+const MAX_LEVEL = 10;
+const MIN_RATE = 0.50, MAX_RATE = 1.00; // 10 livelli discreti da 0.50 a 1.00
+function rateFromLevel(speedLvl) {
+  return +(MIN_RATE + (speedLvl - 1) * (MAX_RATE - MIN_RATE) / 9).toFixed(3);
+}
+const ITALIAN_RATE = 1.00; // la voce italiana è sempre a velocità piena
+const LEVEL_UP_AT   = 60; // scambi consecutivi buoni, accumulati anche tra sessioni diverse
+const LEVEL_DOWN_AT = 8;  // richieste di ripetizione/incomprensione consecutive → livello contenuti giù
 
 function loadMemory() {
   try {
@@ -166,9 +195,15 @@ function setStatus(txt, mode) {
   statusEl.className = 'status' + (mode ? ' ' + mode : '');
 }
 function updateLevelUI() {
-  levelLabel.textContent = 'Livello ' + memory.level + ' / 5';
-  levelFill.style.width  = (memory.level * 20) + '%';
+  levelLabel.textContent = 'Livello ' + memory.level + ' / ' + MAX_LEVEL;
+  levelFill.style.width  = (memory.level * (100 / MAX_LEVEL)) + '%';
   sessionLbl.textContent = 'Sessioni: ' + memory.sessionCount;
+  const contentSel = document.getElementById('contentLevelSelect');
+  if (contentSel) contentSel.value = String(memory.level);
+  const speedSlider = document.getElementById('speedSlider');
+  const speedLabelEl = document.getElementById('speedValueLabel');
+  if (speedSlider) speedSlider.value = String(memory.speechLevel);
+  if (speedLabelEl) speedLabelEl.textContent = memory.speechLevel + '/10 (' + rateFromLevel(memory.speechLevel).toFixed(2) + 'x)';
 }
 function appendLine(who, text, isTip) {
   const d = document.createElement('div');
@@ -189,9 +224,27 @@ function renderMemPanel() {
 }
 updateLevelUI();
 
+document.getElementById('contentLevelSelect').addEventListener('change', (e) => {
+  memory.level = parseInt(e.target.value, 10);
+  // un cambio manuale azzera i contatori di progressione automatica, per ripartire puliti dal nuovo livello
+  memory.consecutiveGood = 0;
+  memory.recentRepeats = 0;
+  saveMemory(memory);
+  updateLevelUI();
+  log('Livello contenuti impostato manualmente a ' + memory.level);
+});
+
+document.getElementById('speedSlider').addEventListener('input', (e) => {
+  memory.speechLevel = parseInt(e.target.value, 10);
+  saveMemory(memory);
+  updateLevelUI();
+  log('Velocità EN impostata manualmente a livello ' + memory.speechLevel + ' (' + rateFromLevel(memory.speechLevel).toFixed(2) + 'x)');
+});
+
 /* ---- PROMPT ---- */
 function buildSystemPrompt() {
-  const lvlDesc = ['principiante assoluto','base','elementare','pre-intermedio','intermedio'];
+  const lvlDesc = ['principiante assoluto','base','base+','elementare','elementare+',
+    'pre-intermedio','pre-intermedio+','intermedio','intermedio+','intermedio solido'];
   const errSec = memory.recurringErrors.length
     ? '\n\nErrori ricorrenti di questo studente: ' + memory.recurringErrors.join('; ')
       + '. Monitorali con attenzione e correggili quando si ripresentano.'
@@ -210,28 +263,59 @@ function buildSystemPrompt() {
       + '. Introducile naturalmente nella conversazione.'
     : '';
 
-  return `You are Viola, a patient and friendly English conversation tutor for an Italian adult learner.
-Current level: ${memory.level}/5 (${lvlDesc[memory.level-1]}). Sessions completed: ${memory.sessionCount}.${errSec}${topSec}${lastSec}${phraseSec}
+  const italianModeSec = italianMode
+    ? `\n\nSPECIAL MODE ACTIVE: The learner has switched to Italian-help mode. They will speak to you in Italian, often asking how to say or explain something in English. Respond using a MIXED format: write the Italian parts inside parentheses, and the English parts outside parentheses, alternating naturally like a real bilingual teacher. Example: "(Si dice) Tomorrow I'm going to my mother's place for dinner. (Questa è la forma più naturale.)" Keep explanations short and clear. Always include at least one clean English sentence they can repeat.`
+    : '';
 
-IMPORTANT CONTEXT: You communicate with the learner through text-to-speech synthesis. You DO speak out loud at a controllable speed. The current speech rate is level ${memory.level}/5. When the learner asks you to speak more slowly, repeat something, or says they did not understand, respond warmly and say you will speak more slowly or repeat the concept — because the system actually will reduce the speed automatically. Never say you cannot control your speed or that you are a text program.
+  const vocabTier = memory.level <= 2
+    ? 'Only the most common everyday words. Present simple and simple past only. Very short, simple sentences.'
+    : memory.level <= 4
+    ? 'Common everyday vocabulary. Present, past, and simple future tenses. Short sentences, minimal subordinate clauses.'
+    : memory.level <= 6
+    ? 'Broader everyday vocabulary, common phrasal verbs. Can use present perfect and basic conditionals. One subordinate clause is fine.'
+    : memory.level <= 8
+    ? 'Wider vocabulary including some idiomatic expressions. Comfortable with all common tenses and conditionals. Natural sentence complexity.'
+    : 'Rich everyday vocabulary, idioms welcome. Full range of tenses and complex sentences, close to natural native pacing of ideas (but still clear and friendly).';
+
+  const topicTier = memory.level <= 3
+    ? 'Stick to very concrete daily-life topics: routines, food, family, weather, simple hobbies.'
+    : memory.level <= 6
+    ? 'You can explore opinions, past experiences, simple plans, and light abstract topics (preferences, comparisons).'
+    : 'You can discuss more abstract or nuanced topics: opinions on current events, hypothetical situations, storytelling, culture.';
+
+  return `You are Viola, a patient and friendly English conversation tutor for an Italian adult learner.
+Current content level: ${memory.level}/${MAX_LEVEL} (${lvlDesc[memory.level-1]}). Sessions completed: ${memory.sessionCount}.${errSec}${topSec}${lastSec}${phraseSec}${italianModeSec}
+
+IMPORTANT CONTEXT: You communicate with the learner through text-to-speech synthesis. You DO speak out loud, at a speed the learner controls manually and independently from content difficulty. When the learner asks you to speak more slowly or faster, or says they did not understand, respond warmly and briefly confirm — the system actually adjusts the real audio speed automatically, this is not just words. Never say you cannot control your speed or that you are a text-only program.
 
 CRITICAL RULES — follow every single one:
 1. BREVITY: For casual conversation, 2-3 short sentences. If the learner asks a direct question, answer it properly in 3-5 sentences, then add your follow-up question. Never give a one-word or evasive answer to a real question.
-2. VOCABULARY: level ${memory.level} appropriate. ${memory.level<=2?'Only very common simple words.':memory.level<=3?'Everyday common vocabulary only.':'Common vocabulary, simple phrasal verbs ok.'}
-3. Always end with ONE simple question to keep the conversation going.
-4. CORRECTIONS: if the learner makes a grammar or vocabulary error, first respond naturally to their meaning, then on a NEW LINE write exactly: "Tip: [corrected English form] ([brevissima spiegazione in italiano tra parentesi])". Skip tiny or unclear errors. Never correct pronunciation since you only see transcribed text.
-5. Watch especially for: missing auxiliaries, wrong prepositions, article errors, wrong verb tense.
-6. Plain text only — no emojis, no markdown, no lists. This text is partially read by text-to-speech.
-7. Respond in English only, except for the short Italian note inside Tip lines.`;
+2. VOCABULARY & GRAMMAR (content level ${memory.level}/${MAX_LEVEL}): ${vocabTier}
+3. TOPICS: ${topicTier}
+4. Always end with ONE simple question to keep the conversation going${italianMode ? ' (in English, even in Italian mode, to encourage them back)' : ''}.
+5. CORRECTIONS: if the learner makes a grammar or vocabulary error, first respond naturally to their meaning, then on a NEW LINE write exactly: "Tip: [corrected English form] ([brevissima spiegazione in italiano tra parentesi])". Skip tiny or unclear errors. Never correct pronunciation since you only see transcribed text.
+6. Watch especially for: missing auxiliaries, wrong prepositions, article errors, wrong verb tense.
+7. Plain text only — no emojis, no markdown, no lists. This text is partially read by text-to-speech.
+8. ${italianMode ? 'Follow the SPECIAL MODE format above for this reply.' : 'Respond in English only, except for the short Italian note inside Tip lines.'}`;
 }
 
-/* ---- RIPETIZIONE detection ---- */
+/* ---- RIPETIZIONE detection (incomprensione → incide sul livello contenuti) ---- */
 const REPEAT_WORDS = ['repeat','again','say again','once more','pardon','what did you say',
-  "didn't understand","don't understand","cannot understand","can't understand",
-  'slower','more slowly','speak slowly','slowly please','too fast','come again','please say'];
+  "didn't understand","don't understand","cannot understand","can't understand",'come again','please say'];
 function isRepeatRequest(txt) {
   const l = txt.toLowerCase();
   return REPEAT_WORDS.some(w => l.includes(w));
+}
+
+/* ---- COMANDI VELOCITÀ (manuali, indipendenti dal livello contenuti) ---- */
+const SPEED_UP_WORDS   = ['speak faster','faster please','speed up','go faster','a bit faster','more quickly'];
+const SPEED_DOWN_WORDS = ['speak slower','slower please','slow down','go slower','speak slowly',
+  'more slowly','slowly please','too fast'];
+function detectSpeedCommand(text) {
+  const l = text.toLowerCase().trim();
+  if (SPEED_UP_WORDS.some(w => l.includes(w)))   return 'up';
+  if (SPEED_DOWN_WORDS.some(w => l.includes(w))) return 'down';
+  return null;
 }
 
 /* ---- LEVEL update ---- */
@@ -239,20 +323,22 @@ function applyExchangeResult(wasRepeat) {
   if (wasRepeat) {
     memory.consecutiveGood = 0;
     memory.recentRepeats   = (memory.recentRepeats || 0) + 1;
+    // richiesta di ripetizione/incomprensione → rallenta la voce inglese in modo netto (3 livelli su 10)
+    memory.speechLevel = Math.max(1, memory.speechLevel - 3);
     if (memory.recentRepeats >= LEVEL_DOWN_AT && memory.level > 1) {
       memory.level--;
       memory.recentRepeats = 0;
-      log('Livello sceso a ' + memory.level + ' (troppe richieste di ripetizione)');
-      appendLine('Sistema', '⬇ Livello sceso a ' + memory.level + '/5 — rallento un po\'.');
+      log('Livello contenuti sceso a ' + memory.level + ' (troppe incomprensioni ripetute)');
+      appendLine('Sistema', '⬇ Livello contenuti sceso a ' + memory.level + '/' + MAX_LEVEL + '.');
     }
   } else {
     memory.consecutiveGood = (memory.consecutiveGood || 0) + 1;
     memory.recentRepeats   = Math.max(0, (memory.recentRepeats || 0) - 1);
-    if (memory.consecutiveGood >= LEVEL_UP_AT && memory.level < 5) {
+    if (memory.consecutiveGood >= LEVEL_UP_AT && memory.level < MAX_LEVEL) {
       memory.level++;
       memory.consecutiveGood = 0;
-      log('Livello salito a ' + memory.level + ' (ottimi scambi consecutivi)');
-      appendLine('Sistema', '⬆ Ottimo! Livello salito a ' + memory.level + '/5 — aumento un po\' la velocità.');
+      log('Livello contenuti salito a ' + memory.level + ' (progressi costanti su più sessioni)');
+      appendLine('Sistema', '⬆ Ottimo! Livello contenuti salito a ' + memory.level + '/' + MAX_LEVEL + '.');
     }
   }
   memory.totalExchanges = (memory.totalExchanges || 0) + 1;
@@ -327,8 +413,7 @@ ${convo}`;
       memory.phrasesToReview = [...new Set([...memory.phrasesToReview, ...parsed.phrasesToReview])].slice(-10);
     memory.sessionCount   = (memory.sessionCount || 0) + 1;
     memory.lastUpdated    = new Date().toISOString();
-    memory.consecutiveGood = 0;
-    memory.recentRepeats   = 0;
+    // consecutiveGood e recentRepeats NON si azzerano: il progresso si accumula tra sessioni
     saveMemory(memory);
     updateLevelUI();
     log('Memoria aggiornata con successo.');
@@ -394,11 +479,21 @@ function releaseWakeLock() {
 }
 
 /* ---- TTS ---- */
-function parseTip(tipLine) {
-  // Format atteso: "Tip: [forma inglese corretta] ([spiegazione italiana])"
-  const match = tipLine.match(/^Tip:\s*(.*?)\s*\(([^)]+)\)\s*$/);
-  if (match) return { english: 'Tip: ' + match[1].trim(), italian: match[2].trim() };
-  return { english: tipLine, italian: '' }; // fallback: tutto in inglese
+// Spezza un testo in segmenti alternati: fuori parentesi = inglese, dentro parentesi = italiano
+function splitBilingual(text) {
+  const segments = [];
+  const re = /\(([^)]+)\)/g;
+  let lastIndex = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    const before = text.slice(lastIndex, m.index).trim();
+    if (before) segments.push({ lang: 'en', text: before });
+    const inside = m[1].trim();
+    if (inside) segments.push({ lang: 'it', text: inside });
+    lastIndex = re.lastIndex;
+  }
+  const tail = text.slice(lastIndex).trim();
+  if (tail) segments.push({ lang: 'en', text: tail });
+  return segments;
 }
 
 function extractParts(fullReply) {
@@ -422,31 +517,42 @@ function makeSpeech(text, voice, rate, lang) {
 }
 
 function speakAndContinue(text) {
-  const { english, tipLines } = extractParts(text);
   const enVoice = getVoice();
   const itVoice = findItalianVoice();
-  const enRate  = VOICE_RATES[memory.level - 1];
+  const enRate  = rateFromLevel(memory.speechLevel);
 
   const onAllDone = () => {
     busy = false;
-    if (shouldListen) { setStatus('In ascolto... parla in inglese'); startListening(); }
+    if (shouldListen) {
+      setStatus(italianMode ? 'In ascolto... (modalità italiano attiva)' : 'In ascolto... parla in inglese');
+      startListening();
+    }
   };
 
   const utterances = [];
 
-  if (english) {
-    utterances.push(makeSpeech(english, enVoice, enRate, 'en-US'));
-  }
-
-  for (const tipLine of tipLines) {
-    const { english: tipEn, italian: tipIt } = parseTip(tipLine);
-    if (tipEn) utterances.push(makeSpeech(tipEn, enVoice, enRate, 'en-US'));
-    if (tipIt) utterances.push(makeSpeech(tipIt, itVoice || enVoice, 0.85, itVoice ? 'it-IT' : 'en-US'));
+  if (italianMode) {
+    // In modalità italiano: l'intera risposta può contenere segmenti misti IT/EN tra parentesi
+    const segs = splitBilingual(text);
+    segs.forEach(s => {
+      if (s.lang === 'it') utterances.push(makeSpeech(s.text, itVoice || enVoice, ITALIAN_RATE, itVoice ? 'it-IT' : 'en-US'));
+      else utterances.push(makeSpeech(s.text, enVoice, enRate, 'en-US'));
+    });
+  } else {
+    // Modalità normale: testo principale in inglese + righe Tip con eventuale parte italiana tra parentesi
+    const { english, tipLines } = extractParts(text);
+    if (english) utterances.push(makeSpeech(english, enVoice, enRate, 'en-US'));
+    for (const tipLine of tipLines) {
+      const segs = splitBilingual(tipLine.replace(/^Tip:\s*/, 'Tip: '));
+      segs.forEach(s => {
+        if (s.lang === 'it') utterances.push(makeSpeech(s.text, itVoice || enVoice, ITALIAN_RATE, itVoice ? 'it-IT' : 'en-US'));
+        else utterances.push(makeSpeech(s.text, enVoice, enRate, 'en-US'));
+      });
+    }
   }
 
   if (!utterances.length) { onAllDone(); return; }
 
-  // Collega gli utterance in sequenza tramite onend — usa indice fisso per closure
   for (let i = 0; i < utterances.length; i++) {
     const next = utterances[i + 1];
     const isLast = i === utterances.length - 1;
@@ -455,13 +561,24 @@ function speakAndContinue(text) {
   }
 
   busy = true;
-  setStatus('Viola sta parlando... (livello ' + memory.level + ')');
+  setStatus('Viola sta parlando...' + (italianMode ? ' (italiano)' : ' (livello ' + memory.level + ')'));
   speechSynthesis.speak(utterances[0]);
 }
 
 /* ---- SPEECH RECOGNITION ---- */
 const SRC = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null, shouldListen = false, busy = false;
+let italianMode = false;
+
+const SWITCH_TO_ITALIAN = ['switch to italian','activate italian','italian mode','speak italian'];
+const SWITCH_TO_ENGLISH = ['switch to english','activate english','english mode','speak english'];
+
+function detectLanguageSwitch(text) {
+  const l = text.toLowerCase().trim();
+  if (SWITCH_TO_ITALIAN.some(p => l.includes(p))) return 'it';
+  if (SWITCH_TO_ENGLISH.some(p => l.includes(p))) return 'en';
+  return null;
+}
 
 if (!SRC) {
   setStatus('Riconoscimento vocale NON disponibile in questo browser.', 'err');
@@ -471,7 +588,10 @@ if (!SRC) {
   recognition.continuous = true;
   recognition.interimResults = true;
 
-  recognition.onstart = () => { log('In ascolto.'); setStatus('In ascolto... parla in inglese'); };
+  recognition.onstart = () => {
+    log('In ascolto (' + (italianMode ? 'italiano' : 'inglese') + ').');
+    setStatus(italianMode ? 'In ascolto... (modalità italiano attiva)' : 'In ascolto... parla in inglese');
+  };
 
   let pendingText = '';
   let silenceTimer = null;
@@ -506,6 +626,7 @@ if (!SRC) {
 
 function startListening() {
   if (!recognition) return;
+  recognition.lang = italianMode ? 'it-IT' : 'en-US';
   try { recognition.start(); } catch(e) { log('Avvio: ' + e.message); }
 }
 
@@ -518,6 +639,46 @@ function trimHistory(h) {
 
 async function handleUserSpeech(text) {
   appendLine('Tu', text);
+
+  const switchTo = detectLanguageSwitch(text);
+  if (switchTo) {
+    italianMode = (switchTo === 'it');
+    log('Modalità lingua cambiata: ' + (italianMode ? 'italiano' : 'inglese'));
+    const confirmText = italianMode
+      ? 'Perfetto, ora puoi parlare in italiano. Dimmi pure cosa vuoi sapere.'
+      : "Great, we're back to English! Let's continue.";
+    appendLine('Viola', confirmText);
+    busy = true;
+    if (recognition) recognition.stop();
+    const segs = italianMode ? [{ lang: 'it', text: confirmText }] : [{ lang: 'en', text: confirmText }];
+    const v = segs[0].lang === 'it' ? (findItalianVoice() || getVoice()) : getVoice();
+    const u = makeSpeech(confirmText, v, segs[0].lang === 'it' ? ITALIAN_RATE : rateFromLevel(memory.speechLevel), segs[0].lang === 'it' ? 'it-IT' : 'en-US');
+    u.onend = () => { busy = false; if (shouldListen) { setStatus(italianMode ? 'In ascolto... (modalità italiano attiva)' : 'In ascolto... parla in inglese'); startListening(); } };
+    u.onerror = u.onend;
+    speechSynthesis.speak(u);
+    return;
+  }
+
+  const speedCmd = detectSpeedCommand(text);
+  if (speedCmd) {
+    const before = memory.speechLevel;
+    memory.speechLevel = speedCmd === 'up'
+      ? Math.min(10, memory.speechLevel + 1)
+      : Math.max(1, memory.speechLevel - 1);
+    saveMemory(memory);
+    updateLevelUI();
+    log('Velocità EN cambiata: livello ' + before + ' → ' + memory.speechLevel + ' (' + rateFromLevel(memory.speechLevel).toFixed(2) + 'x)');
+    const confirmText = speedCmd === 'up' ? "Sure, I'll speak a bit faster." : "Okay, I'll slow down a little.";
+    appendLine('Viola', confirmText);
+    busy = true;
+    if (recognition) recognition.stop();
+    const u = makeSpeech(confirmText, getVoice(), rateFromLevel(memory.speechLevel), 'en-US');
+    u.onend = () => { busy = false; if (shouldListen) { setStatus(italianMode ? 'In ascolto... (modalità italiano attiva)' : 'In ascolto... parla in inglese'); startListening(); } };
+    u.onerror = u.onend;
+    speechSynthesis.speak(u);
+    return;
+  }
+
   const isRepeat = isRepeatRequest(text);
   if (!isRepeat) applyExchangeResult(false);
   else           applyExchangeResult(true);
@@ -604,7 +765,7 @@ document.getElementById('resetMemBtn').onclick = () => {
   convHistory = [];
   transcEl.innerHTML = '';
   renderMemPanel();
-  setStatus('Memoria cancellata. Premi Start per iniziare da capo.');
+  setStatus('Memoria cancellata. Scegli il livello di partenza e premi Start.');
   log('Memoria cancellata.');
 };
 
