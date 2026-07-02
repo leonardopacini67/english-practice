@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>English Practice – Viola</title>
+<title>English Practice – Sofia</title>
 <style>
   body {
     font-family: -apple-system, Roboto, "Segoe UI", Arial, sans-serif;
@@ -74,7 +74,7 @@
 </head>
 <body>
 
-<h1>English Practice – Viola</h1>
+<h1>English Practice – Sofia</h1>
 <p class="intro">Conversazione a mani libere. Premi Start la prima volta, poi parla normalmente. Dì "Change Italian" (o "Italiano") se vuoi chiedere qualcosa in italiano, "Change English" (o "Inglese") per tornare.</p>
 
 <div class="status" id="status">Pronto. Premi Start per iniziare.</div>
@@ -86,7 +86,7 @@
   <button id="resetMemBtn">🗑 Cancella memoria</button>
 </div>
 
-<div class="label">Voce di Viola:</div>
+<div class="label">Voce di Sofia:</div>
 <select id="voiceSelect"><option>— Caricamento voci... —</option></select>
 
 <div class="level-row">
@@ -122,7 +122,7 @@
 <div id="transcript"></div>
 
 <div id="memPanel">
-  <h2>📊 Memoria di Viola</h2>
+  <h2>📊 Memoria di Sofia</h2>
   <div class="section"><strong>Errori ricorrenti</strong><ul id="memErrors"><li>—</li></ul></div>
   <div class="section"><strong>Argomenti già trattati</strong><ul id="memTopics"><li>—</li></ul></div>
   <div class="section"><strong>Frasi da ripassare</strong><ul id="memPhrases"><li>—</li></ul></div>
@@ -137,7 +137,7 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
@@ -283,7 +283,7 @@ function buildSystemPrompt() {
     ? 'You can explore opinions, past experiences, simple plans, and light abstract topics (preferences, comparisons).'
     : 'You can discuss more abstract or nuanced topics: opinions on current events, hypothetical situations, storytelling, culture.';
 
-  return `You are Viola, a patient and friendly English conversation tutor for an Italian adult learner.
+  return `You are Sofia, a patient and friendly English conversation tutor for an Italian adult learner.
 Current content level: ${memory.level}/${MAX_LEVEL} (${lvlDesc[memory.level-1]}). Sessions completed: ${memory.sessionCount}.${errSec}${topSec}${lastSec}${phraseSec}${italianModeSec}
 
 IMPORTANT CONTEXT: You communicate with the learner through text-to-speech synthesis. You DO speak out loud, at a speed the learner controls manually and independently from content difficulty. When the learner asks you to speak more slowly or faster, or says they did not understand, respond warmly and briefly confirm — the system actually adjusts the real audio speed automatically, this is not just words. Never say you cannot control your speed or that you are a text-only program.
@@ -372,7 +372,7 @@ async function callGemini(modelId, contents, systemText) {
   return txt.trim();
 }
 
-async function getViolaReply(history) {
+async function getSofiaReply(history) {
   const models = [MODEL_ID, MODEL_ID, FALLBACK_MODEL_ID, FALLBACK_MODEL_ID];
   let lastErr;
   for (let i = 0; i < models.length; i++) {
@@ -389,7 +389,7 @@ async function getViolaReply(history) {
 async function updateMemoryFromSession(history) {
   if (history.length < 3) return;
   const convo = history.map(m =>
-    (m.role === 'user' ? 'Studente: ' : 'Viola: ') + m.parts[0].text
+    (m.role === 'user' ? 'Studente: ' : 'Sofia: ') + m.parts[0].text
   ).join('\n');
   const prompt = `Analizza questa conversazione di apprendimento dell'inglese e rispondi SOLO con un oggetto JSON valido (nessun markdown, nessuna spiegazione).
 Campi richiesti:
@@ -562,7 +562,7 @@ function speakAndContinue(text) {
   }
 
   busy = true;
-  setStatus('Viola sta parlando...' + (italianMode ? ' (italiano)' : ' (livello ' + memory.level + ')'));
+  setStatus('Sofia sta parlando...' + (italianMode ? ' (italiano)' : ' (livello ' + memory.level + ')'));
   speechSynthesis.speak(utterances[0]);
 }
 
@@ -654,7 +654,7 @@ async function handleUserSpeech(text) {
     const confirmText = italianMode
       ? 'Perfetto, ora puoi parlare in italiano. Dimmi pure cosa vuoi sapere.'
       : "Great, we're back to English! Let's continue.";
-    appendLine('Viola', confirmText);
+    appendLine('Sofia', confirmText);
     busy = true;
     if (recognition) recognition.stop();
     const segs = italianMode ? [{ lang: 'it', text: confirmText }] : [{ lang: 'en', text: confirmText }];
@@ -676,7 +676,7 @@ async function handleUserSpeech(text) {
     updateLevelUI();
     log('Velocità EN cambiata: livello ' + before + ' → ' + memory.speechLevel + ' (' + rateFromLevel(memory.speechLevel).toFixed(2) + 'x)');
     const confirmText = speedCmd === 'up' ? "Sure, I'll speak a bit faster." : "Okay, I'll slow down a little.";
-    appendLine('Viola', confirmText);
+    appendLine('Sofia', confirmText);
     busy = true;
     if (recognition) recognition.stop();
     const u = makeSpeech(confirmText, getVoice(), rateFromLevel(memory.speechLevel), 'en-US');
@@ -694,17 +694,17 @@ async function handleUserSpeech(text) {
   busy = true;
   if (recognition) recognition.stop();
   setStatus('Sto pensando...');
-  log('Invio a Viola: "' + text + '"');
+  log('Invio a Sofia: "' + text + '"');
 
   try {
-    const reply = await getViolaReply(trimHistory(convHistory));
+    const reply = await getSofiaReply(trimHistory(convHistory));
     convHistory.push({ role: 'model', parts: [{ text: reply }] });
     // Separate Tip lines visually
     const parts = reply.split(/(Tip:.*)/);
     parts.forEach(p => {
       const clean = p.trim();
       if (!clean) return;
-      appendLine('Viola', clean, clean.startsWith('Tip:'));
+      appendLine('Sofia', clean, clean.startsWith('Tip:'));
     });
     speakAndContinue(reply);
   } catch (err) {
@@ -717,7 +717,7 @@ async function handleUserSpeech(text) {
 
 function buildGreeting() {
   if (memory.sessionCount === 0)
-    return "Hi! I'm Viola, your English tutor. Nice to meet you! What's your name?";
+    return "Hi! I'm Sofia, your English tutor. Nice to meet you! What's your name?";
   if (memory.lastTopic)
     return "Welcome back! Last time we talked about " + memory.lastTopic
       + ". Would you like to continue, or start with something new?";
@@ -736,7 +736,7 @@ document.getElementById('startBtn').onclick = () => {
   if (convHistory.length === 0) {
     const greeting = buildGreeting();
     convHistory.push({ role: 'model', parts: [{ text: greeting }] });
-    appendLine('Viola', greeting);
+    appendLine('Sofia', greeting);
     speakAndContinue(greeting);
   } else {
     startListening();
