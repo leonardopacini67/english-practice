@@ -137,7 +137,7 @@
    INSERISCI QUI LA TUA CHIAVE GEMINI GRATUITA
    (da https://aistudio.google.com -> Get API key)
    ============================================= */
-const API_KEY = "AQ.Ab8RN6JbH23QUlsiYifiU815_9gnP3VcNgkL0dN4hPag1azmhg";
+const API_KEY = "INSERISCI_QUI_LA_TUA_CHIAVE_GEMINI";
 const MODEL_ID = "gemini-2.5-flash";
 const FALLBACK_MODEL_ID = "gemini-2.5-flash-lite";
 
@@ -577,7 +577,11 @@ const SWITCH_TO_ENGLISH = ['switch to english','activate english','english mode'
   'inglese','english please','in english','back to english','change english','change to english'];
 
 function detectLanguageSwitch(text) {
-  const l = text.toLowerCase().trim();
+  const l = text.toLowerCase().trim().replace(/[.!?,]+$/, '');
+  const wordCount = l.split(/\s+/).filter(Boolean).length;
+  // Comando valido solo se la frase è breve (max 4 parole): evita falsi positivi
+  // quando la parola "inglese"/"italiano" compare dentro una frase normale più lunga
+  if (wordCount > 4) return null;
   if (SWITCH_TO_ITALIAN.some(p => l.includes(p))) return 'it';
   if (SWITCH_TO_ENGLISH.some(p => l.includes(p))) return 'en';
   return null;
